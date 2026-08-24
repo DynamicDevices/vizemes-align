@@ -40,6 +40,18 @@ rm -rf "${CORPUS:?}/"*
 # prepared layout from createDataCorpus: per-utterance dirs or flat — copy tree
 cp -a "${PREPARED}/." "$CORPUS/"
 
+# Require mfa env (libmamba "prefix does not exist" is opaque)
+if ! micromamba env list 2>/dev/null | awk '{print $1}' | grep -qx mfa; then
+  echo "micromamba env 'mfa' not found." >&2
+  echo "Create once (NixOS / nix develop OK):" >&2
+  echo "  micromamba create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner" >&2
+  echo "  micromamba run -n mfa mfa model download acoustic english_us_arpa" >&2
+  echo "  micromamba run -n mfa mfa model download dictionary english_us_arpa" >&2
+  echo "  micromamba run -n mfa mfa model download g2p english_us_arpa" >&2
+  echo "Then re-run: ./scripts/run_mfa.sh ${SUBSET}" >&2
+  exit 1
+fi
+
 echo "[mfa] acoustic=$MFA_ACOUSTIC dictionary=$MFA_DICTIONARY"
 echo "[mfa] corpus=$CORPUS → $OUT"
 

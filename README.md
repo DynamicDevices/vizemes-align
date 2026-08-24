@@ -4,6 +4,18 @@ Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map ph
 
 Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
+
+## MFA env (one-time)
+
+```bash
+micromamba create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
+micromamba run -n mfa mfa model download acoustic english_us_arpa
+micromamba run -n mfa mfa model download dictionary english_us_arpa
+micromamba run -n mfa mfa model download g2p english_us_arpa
+```
+
+If you see `The given prefix does not exist: ".../envs/mfa"`, the env was never created — run the block above, then `./scripts/run_mfa.sh test-clean` again. Download/prepare need not be re-run.
+
 ## NixOS / `nix develop`
 
 ```bash
