@@ -9,7 +9,12 @@
   outputs = { self, nixpkgs, flake-utils }:
     flake-utils.lib.eachDefaultSystem (system:
       let
-        pkgs = import nixpkgs { inherit system; };
+        # steam-run → steam-unwrapped (unfree). Allow in-flake so plain
+        # `nix develop` works without NIXPKGS_ALLOW_UNFREE + --impure.
+        pkgs = import nixpkgs {
+          inherit system;
+          config.allowUnfree = true;
+        };
         py = pkgs.python312;
         # MFA is typically installed via micromamba/conda; keep Python export path pure-Nix.
         pythonEnv = py.withPackages (ps: with ps; [
@@ -32,16 +37,16 @@
             export VIZEMES_ALIGN_ROOT="$(pwd)"
             echo "vizemes-align nix develop"
             echo "  Python/ffmpeg ready for download + prepare + Godot export."
-            echo "  MFA on NixOS (stub-ld): nix develop provides steam-run; ./scripts/mamba_nixos.sh wraps micromamba."
+            echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
+            echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
             echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
             echo "  MFA on NixOS: do NOT use nixpkgs micromamba (breaks as .mamba-wrapped)."
-            echo "  Install upstream micromamba once, then:"
-            echo "    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C $HOME/micromamba bin/micromamba"
-            echo "    export PATH=\"$HOME/micromamba/bin:\$PATH\""
-            echo "    micromamba create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner"
-            echo "    micromamba run -n mfa mfa model download acoustic english_us_arpa"
-            echo "    micromamba run -n mfa mfa model download dictionary english_us_arpa"
-            echo "    micromamba run -n mfa mfa model download g2p english_us_arpa"
+            echo "  One-time MFA env (inside this shell):"
+            echo "    ./scripts/bootstrap_mfa_micromamba.sh"
+            echo "    ./scripts/mamba_nixos.sh create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner"
+            echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download acoustic english_us_arpa"
+            echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download dictionary english_us_arpa"
+            echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download g2p english_us_arpa"
             # Optional: local venv for textgrid if missing from nixpkgs
             if ! python3 -c 'import textgrid' 2>/dev/null; then
               if [ ! -d .venv ]; then

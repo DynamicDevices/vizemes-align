@@ -32,9 +32,21 @@ If you see `The given prefix does not exist: ".../envs/mfa"`, the env was never 
 ## NixOS / `nix develop`
 
 ```bash
+git pull
 nix develop
-# then pipeline as below (MFA still via micromamba inside the shell — see flake shellHook)
+# MFA via wrapped upstream micromamba (not nixpkgs micromamba):
+./scripts/bootstrap_mfa_micromamba.sh
+./scripts/mamba_nixos.sh create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
+./scripts/mamba_nixos.sh run -n mfa mfa model download acoustic english_us_arpa
+./scripts/mamba_nixos.sh run -n mfa mfa model download dictionary english_us_arpa
+./scripts/mamba_nixos.sh run -n mfa mfa model download g2p english_us_arpa
+./scripts/run_mfa.sh test-clean
 ```
+
+The flake includes `steam-run` and sets `allowUnfree` so plain `nix develop`
+evaluates (no `NIXPKGS_ALLOW_UNFREE` / `--impure` needed). Bare
+`micromamba` from the internet still hits NixOS stub-ld — use
+`./scripts/mamba_nixos.sh` (or enable `programs.nix-ld.enable`).
 
 ## Prerequisites
 
