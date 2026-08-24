@@ -4,6 +4,13 @@ Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map ph
 
 Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
+## NixOS / `nix develop`
+
+```bash
+nix develop
+# then pipeline as below (MFA still via micromamba inside the shell — see flake shellHook)
+```
+
 ## Prerequisites
 
 - Python 3.11+

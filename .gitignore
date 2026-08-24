@@ -6,3 +6,5 @@ data/export/
 .venv/
 __pycache__/
 *.pyc
+result
+.direnv/
