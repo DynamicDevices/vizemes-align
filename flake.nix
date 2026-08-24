@@ -25,20 +25,20 @@
             ffmpeg
             git
             curl
-            # micromamba for montreal-forced-aligner (not always packaged usefully)
-            micromamba
           ];
 
           shellHook = ''
             export VIZEMES_ALIGN_ROOT="$(pwd)"
             echo "vizemes-align nix develop"
             echo "  Python/ffmpeg ready for download + prepare + Godot export."
-            echo "  MFA: create/use env once:"
-            echo "    micromamba create -n mfa -c conda-forge python=3.12 montreal-forced-aligner"
+            echo "  MFA on NixOS: do NOT use nixpkgs micromamba (breaks as .mamba-wrapped)."
+            echo "  Install upstream micromamba once, then:"
+            echo "    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C $HOME/micromamba bin/micromamba"
+            echo "    export PATH=\"$HOME/micromamba/bin:\$PATH\""
+            echo "    micromamba create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner"
             echo "    micromamba run -n mfa mfa model download acoustic english_us_arpa"
             echo "    micromamba run -n mfa mfa model download dictionary english_us_arpa"
             echo "    micromamba run -n mfa mfa model download g2p english_us_arpa"
-            echo "  Then: ./scripts/pipeline.sh test-clean"
             # Optional: local venv for textgrid if missing from nixpkgs
             if ! python3 -c 'import textgrid' 2>/dev/null; then
               if [ ! -d .venv ]; then

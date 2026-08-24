@@ -75,3 +75,14 @@ Or one shot:
 - Start with `test-clean` or `dev-clean` before `train-clean-100`.
 - Own-voice fine-tune and noise aug come after this SoT path is solid.
 - Default topic for Briar Telegram sends while iterating: `vizemes` (group Alex/Julian/Briar).
+
+## NixOS MFA note
+
+nixpkgs `micromamba` often installs as `.mamba-wrapped` and then fails with
+`unknown MAMBA_EXE` / `exec: mfa: not found`. Use the upstream binary instead:
+
+```bash
+./scripts/bootstrap_mfa_micromamba.sh
+export PATH="$HOME/micromamba/bin:$PATH"
+./scripts/run_mfa.sh test-clean
+```

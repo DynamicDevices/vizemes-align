@@ -49,6 +49,8 @@ if ! micromamba env list 2>/dev/null | awk '{print $1}' | grep -qx mfa; then
   echo "  micromamba run -n mfa mfa model download dictionary english_us_arpa" >&2
   echo "  micromamba run -n mfa mfa model download g2p english_us_arpa" >&2
   echo "Then re-run: ./scripts/run_mfa.sh ${SUBSET}" >&2
+  echo "NixOS tip: if you see .mamba-wrapped / unknown MAMBA_EXE, run:" >&2
+  echo "  ./scripts/bootstrap_mfa_micromamba.sh" >&2
   exit 1
 fi
 
