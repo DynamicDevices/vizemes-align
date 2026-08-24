@@ -99,3 +99,23 @@ nixpkgs `micromamba` often installs as `.mamba-wrapped` and then fails with
 export PATH="$HOME/micromamba/bin:$PATH"
 ./scripts/run_mfa.sh test-clean
 ```
+
+
+## NixOS stub-ld (dynamic linker)
+
+If you see `Could not start dynamically linked executable: micromamba` /
+`nix.dev/permalink/stub-ld`, the upstream binary needs an FHS linker:
+
+```bash
+nix develop          # provides steam-run
+./scripts/bootstrap_mfa_micromamba.sh
+./scripts/run_mfa.sh test-clean
+```
+
+Or enable permanently in your NixOS config, then rebuild + re-login:
+
+```nix
+programs.nix-ld.enable = true;
+```
+
+Do **not** use nixpkgs `micromamba` (`.mamba-wrapped`) — MFA rejects it.

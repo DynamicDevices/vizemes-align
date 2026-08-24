@@ -25,12 +25,15 @@
             ffmpeg
             git
             curl
+            steam-run  # FHS wrap for upstream micromamba on NixOS
           ];
 
           shellHook = ''
             export VIZEMES_ALIGN_ROOT="$(pwd)"
             echo "vizemes-align nix develop"
             echo "  Python/ffmpeg ready for download + prepare + Godot export."
+            echo "  MFA on NixOS (stub-ld): nix develop provides steam-run; ./scripts/mamba_nixos.sh wraps micromamba."
+            echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
             echo "  MFA on NixOS: do NOT use nixpkgs micromamba (breaks as .mamba-wrapped)."
             echo "  Install upstream micromamba once, then:"
             echo "    curl -Ls https://micro.mamba.pm/api/micromamba/linux-64/latest | tar -xvj -C $HOME/micromamba bin/micromamba"

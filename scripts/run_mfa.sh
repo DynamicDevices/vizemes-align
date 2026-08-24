@@ -29,26 +29,13 @@ if [[ ! -d "$PREPARED" ]]; then
   exit 1
 fi
 
-MM=""
-if ! MM="$(resolve_micromamba)"; then
-  echo "No usable micromamba on PATH." >&2
-  if is_broken_nix_micromamba; then
-    echo "Detected nixpkgs micromamba (.mamba-wrapped) — MFA cannot use it." >&2
-  fi
-  echo "Bootstrapping upstream micromamba + MFA env ..." >&2
+# Always go through NixOS-safe launcher (steam-run / nix-ld / upstream bin)
+MM=("${ROOT}/scripts/mamba_nixos.sh")
+echo "[mfa] using launcher=${MM[0]}"
+
+if ! "${MM[@]}" env list 2>/dev/null | awk '{print $1}' | grep -qx mfa; then
+  echo "Creating micromamba env mfa (via launcher) ..." >&2
   "${ROOT}/scripts/bootstrap_mfa_micromamba.sh"
-  MM="$(resolve_micromamba)"
-fi
-
-export PATH="$(dirname "$MM"):${PATH}"
-echo "[mfa] using micromamba=$MM"
-
-if ! "$MM" env list 2>/dev/null | awk '{print $1}' | grep -qx mfa; then
-  echo "Creating micromamba env mfa ..." >&2
-  "$MM" create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
-  "$MM" run -n mfa mfa model download acoustic "${MFA_ACOUSTIC}"
-  "$MM" run -n mfa mfa model download dictionary "${MFA_DICTIONARY}"
-  "$MM" run -n mfa mfa model download g2p "${MFA_ACOUSTIC}"
 fi
 
 mkdir -p "$CORPUS" "$OUT" "$OOVS"
@@ -58,7 +45,7 @@ cp -a "${PREPARED}/." "$CORPUS/"
 echo "[mfa] acoustic=$MFA_ACOUSTIC dictionary=$MFA_DICTIONARY"
 echo "[mfa] corpus=$CORPUS → $OUT"
 
-mmfa() { "$MM" run -n mfa mfa "$@"; }
+mmfa() { "${MM[@]}" run -n mfa mfa "$@"; }
 
 mmfa find_oovs "$CORPUS" "$MFA_DICTIONARY" "$OOVS" || true
 OOVS_FILE="${OOVS}/oovs_found_${MFA_DICTIONARY}.txt"
