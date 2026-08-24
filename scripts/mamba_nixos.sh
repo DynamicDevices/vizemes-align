@@ -30,6 +30,17 @@ run_mm() {
   # Prefer PATH that puts our binary first (never nixpkgs .mamba-wrapped)
   export PATH="${ROOT}/bin:${PATH}"
 
+  # nix develop sets TMPDIR to a short-lived nix-shell path. libmamba/steam-run
+  # then fail with: temp_directory_path: No such file or directory [/tmp/nix-shell.*]
+  # Force a durable host temp dir before any micromamba / steam-run call.
+  if [[ -n "${TMPDIR:-}" && "$TMPDIR" == /tmp/nix-shell* ]]; then
+    echo "[mamba-nixos] overriding nix-shell TMPDIR → /tmp" >&2
+  fi
+  export TMPDIR="${VIZEMES_TMPDIR:-/tmp}"
+  export TMP="$TMPDIR"
+  export TEMP="$TMPDIR"
+  mkdir -p "$TMPDIR"
+
   if bare_works; then
     exec "$BIN" "$@"
   fi
@@ -37,7 +48,7 @@ run_mm() {
   if is_nixos || ! bare_works; then
     if command -v steam-run >/dev/null 2>&1; then
       echo "[mamba-nixos] using steam-run (NixOS stub-ld)" >&2
-      exec steam-run "$BIN" "$@"
+      exec steam-run env TMPDIR="$TMPDIR" TMP="$TMPDIR" TEMP="$TMPDIR" "$BIN" "$@"
     fi
     cat >&2 <<'EOF'
 Upstream micromamba cannot start on this NixOS host (stub dynamic linker).

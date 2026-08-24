@@ -35,6 +35,11 @@
 
           shellHook = ''
             export VIZEMES_ALIGN_ROOT="$(pwd)"
+            # Durable temp for micromamba/libmamba (nix-shell TMPDIR breaks steam-run)
+            export TMPDIR="''${VIZEMES_TMPDIR:-/tmp}"
+            export TMP="$TMPDIR"
+            export TEMP="$TMPDIR"
+            mkdir -p "$TMPDIR"
             echo "vizemes-align nix develop"
             echo "  Python/ffmpeg ready for download + prepare + Godot export."
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
