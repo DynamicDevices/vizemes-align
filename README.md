@@ -5,6 +5,19 @@ Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map ph
 Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
 
+
+## MFA on NixOS (important)
+
+`nix develop` must **not** use nixpkgs `micromamba` (it appears as `.mamba-wrapped` and MFA dies).
+
+```bash
+git pull
+./scripts/run_mfa.sh test-clean
+```
+
+`run_mfa.sh` now prefers `~/micromamba/bin/micromamba` and **auto-runs**
+`./scripts/bootstrap_mfa_micromamba.sh` if only the broken nix wrapper is present.
+
 ## MFA env (one-time)
 
 ```bash

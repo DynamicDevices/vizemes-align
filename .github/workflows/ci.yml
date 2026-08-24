@@ -1,0 +1,46 @@
+name: ci
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+
+jobs:
+  scripts-and-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: bash -n scripts
+        run: |
+          set -e
+          for s in scripts/*.sh; do
+            echo "bash -n $s"
+            bash -n "$s"
+          done
+
+      - name: resolve_micromamba rejects missing
+        run: |
+          set +e
+          env -i HOME=/tmp/vizemes-ci-home PATH=/usr/bin:/bin \
+            bash scripts/resolve_micromamba.sh
+          test $? -eq 1
+
+      - name: resolve_micromamba accepts fake binary
+        run: |
+          set -e
+          mkdir -p /tmp/vizemes-ci-home/micromamba/bin
+          printf '#!/bin/sh\necho fake\n' > /tmp/vizemes-ci-home/micromamba/bin/micromamba
+          chmod +x /tmp/vizemes-ci-home/micromamba/bin/micromamba
+          out=$(HOME=/tmp/vizemes-ci-home PATH=/usr/bin:/bin bash scripts/resolve_micromamba.sh)
+          test "$out" = "/tmp/vizemes-ci-home/micromamba/bin/micromamba"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: install python deps
+        run: pip install -r requirements.txt
+
+      - name: export_godot_package on fixture
+        run: python scripts/ci_test_export_fixture.py
