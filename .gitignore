@@ -1,0 +1,8 @@
+data/raw/
+data/prepared/
+data/cache/
+data/aligned/
+data/export/
+.venv/
+__pycache__/
+*.pyc
