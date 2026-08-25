@@ -44,3 +44,21 @@ jobs:
 
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
+
+  nixos-self-hosted:
+    runs-on: [self-hosted, Linux, nixos, esl-nixos]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prove NixOS runner + flake shell
+        run: |
+          set -euo pipefail
+          cat /etc/os-release | head -5
+          nix --version
+          command -v steam-run
+          nix develop --command bash -lc 'python3 --version; ffmpeg -version | head -1'
+
+      - name: export_godot_package on fixture (nix shell)
+        run: |
+          set -euo pipefail
+          nix develop --command bash -lc 'python3 scripts/ci_test_export_fixture.py'
