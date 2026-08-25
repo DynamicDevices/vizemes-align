@@ -46,6 +46,7 @@
           tqdm
           numpy
           textgrid
+          onnxruntime  # scripts/sanity_check_onnx.py (store; no pip)
         ]);
         # Full train stack from nixpkgs-train binary cache — no .venv.
         pythonTrainEnv = pyTrain.withPackages (ps: with ps; [
@@ -56,6 +57,7 @@
           soundfile
           torch
           torchaudio
+          onnxruntime
           # triton comes in as a torch dep when present on the channel
         ]);
         commonHook = ''
@@ -77,7 +79,8 @@
 
           shellHook = commonHook + ''
             echo "vizemes-align nix develop (default = export/MFA)"
-            echo "  Python (requests/tqdm/numpy/textgrid) + ffmpeg from the Nix store."
+            echo "  Python (requests/tqdm/numpy/textgrid/onnxruntime) + ffmpeg from the Nix store."
+            echo "  ONNX sanity: python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1"
             echo "  Train: nix develop .#train   # torch/torchaudio from nixpkgs-25.11 cache"
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
             echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
