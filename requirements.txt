@@ -2,3 +2,8 @@ requests>=2.28
 tqdm>=4.66
 # TextGrid parsing for export
 textgrid>=1.5
+# Feature build + train smoke (build_train_tensors / train_viseme_smoke)
+numpy>=1.26
+soundfile>=0.12
+torch>=2.1
+torchaudio>=2.1
