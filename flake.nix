@@ -41,6 +41,9 @@
         textgrid = mkTextgrid py.pkgs;
         textgridTrain = mkTextgrid pyTrain.pkgs;
         # MFA via micromamba; keep Python export path pure-Nix (no .venv).
+        # Default shell stays on nixos-unstable for export/MFA tooling.
+        # Do NOT put onnxruntime here — unstable often builds it from source.
+        # ONNX sanity uses .#train (nixos-25.11 Hydra substitutes).
         pythonEnv = py.withPackages (ps: with ps; [
           requests
           tqdm
@@ -56,6 +59,7 @@
           soundfile
           torch
           torchaudio
+          onnxruntime  # Hydra-cached on 25.11; scripts/sanity_check_onnx.py
           # triton comes in as a torch dep when present on the channel
         ]);
         commonHook = ''
@@ -78,7 +82,9 @@
           shellHook = commonHook + ''
             echo "vizemes-align nix develop (default = export/MFA)"
             echo "  Python (requests/tqdm/numpy/textgrid) + ffmpeg from the Nix store."
-            echo "  Train: nix develop .#train   # torch/torchaudio from nixpkgs-25.11 cache"
+            echo "  ONNX sanity (Hydra-cached onnxruntime): nix develop .#train --command \\"
+            echo "    python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1"
+            echo "  Train: nix develop .#train   # torch/torchaudio/onnxruntime from nixos-25.11 cache"
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
             echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
             echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
@@ -109,16 +115,18 @@
 
           shellHook = commonHook + ''
             echo "vizemes-align nix develop .#train"
-            echo "  Store (nixpkgs nixos-25.11): numpy/textgrid/soundfile/torch/torchaudio"
+            echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/torch/torchaudio/onnxruntime"
             echo "  No .venv. First enter may download ~1GiB from cache.nixos.org (not compile)."
+            echo "  ONNX sanity:"
+            echo "    python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1"
             echo "  Cycle:"
             echo "    python3 scripts/build_train_tensors.py --subset test-clean"
             echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
-            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy' 2>/dev/null; then
+            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy, onnxruntime' 2>/dev/null; then
               echo "  ERROR: train pythonEnv missing imports" >&2
               exit 1
             fi
-            python3 -c 'import torch; print("  torch", torch.__version__, "cuda", torch.cuda.is_available())'
+            python3 -c 'import torch, onnxruntime as ort; print("  torch", torch.__version__, "cuda", torch.cuda.is_available(), "ort", ort.__version__)'
           '';
         };
       });
