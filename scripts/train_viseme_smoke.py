@@ -34,10 +34,26 @@ def main() -> int:
     ap.add_argument("--context", type=int, default=20, help="Past mel frames (ablate vs 100)")
     ap.add_argument("--epochs", type=int, default=40)
     ap.add_argument("--lr", type=float, default=1e-2)
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Use only the first N utterances from index (0 = all). Good for 16GB laptops.",
+    )
+    ap.add_argument(
+        "--max-frames",
+        type=int,
+        default=0,
+        help="Cap total training windows after concat (0 = unlimited).",
+    )
+    ap.add_argument("--hidden", type=int, default=64, help="MLP hidden size (default 64 for smoke)")
     args = ap.parse_args()
 
     import torch
     import torch.nn as nn
+
+    # Cap BLAS/OMP threads so smoke does not peg every core on a laptop.
+    torch.set_num_threads(max(1, min(4, torch.get_num_threads())))
 
     tdir = ROOT / "data" / "tensors" / args.subset
     index_path = tdir / "index.json"
@@ -46,15 +62,21 @@ def main() -> int:
         return 1
     index = json.loads(index_path.read_text())
     n_visemes = len(index["visemes"])
+    utterances = index["utterances"]
+    if args.limit:
+        utterances = utterances[: args.limit]
 
     Xs, ys = [], []
-    for u in index["utterances"]:
+    for u in utterances:
         z = np.load(tdir / u["path"])
         xw, yw = windows(z["X"], z["y"], args.context)
         Xs.append(xw)
         ys.append(yw)
     X = np.concatenate(Xs, axis=0)
     y = np.concatenate(ys, axis=0)
+    if args.max_frames and X.shape[0] > args.max_frames:
+        X = X[: args.max_frames]
+        y = y[: args.max_frames]
 
     # tiny held-out: last 20% of frames (smoke only)
     n = X.shape[0]
@@ -64,9 +86,9 @@ def main() -> int:
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = nn.Sequential(
-        nn.Linear(X.shape[1], 128),
+        nn.Linear(X.shape[1], args.hidden),
         nn.ReLU(),
-        nn.Linear(128, n_visemes),
+        nn.Linear(args.hidden, n_visemes),
     ).to(device)
     opt = torch.optim.Adam(model.parameters(), lr=args.lr)
     loss_fn = nn.CrossEntropyLoss()
@@ -101,7 +123,8 @@ def main() -> int:
 
     print(
         f"SMOKE_OK subset={args.subset} context={args.context} "
-        f"frames={n} n_visemes={n_visemes} best_val_acc={best:.3f} device={device}"
+        f"frames={n} utterances={len(utterances)} hidden={args.hidden} "
+        f"n_visemes={n_visemes} best_val_acc={best:.3f} device={device}"
     )
     return 0
 
