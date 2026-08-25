@@ -45,8 +45,10 @@
           numpy
           textgrid
           soundfile
-          torch
-          torchaudio
+          pip
+          # Do NOT pull nixpkgs torch/torchaudio here — often builds Triton
+          # from source. Train uses precompiled PyTorch wheels via .venv
+          # (see shellHook). CI never enters this shell.
         ]);
         commonHook = ''
             export VIZEMES_ALIGN_ROOT="$(pwd)"
@@ -68,7 +70,7 @@
           shellHook = commonHook + ''
             echo "vizemes-align nix develop (default = export/MFA)"
             echo "  Python (requests/tqdm/numpy/textgrid) + ffmpeg from the Nix store."
-            echo "  Train: nix develop .#train   # torch/torchaudio/soundfile in store — no .venv"
+            echo "  Train: nix develop .#train   # then one-shot PyTorch CPU wheels (no nixpkgs torch)"
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
             echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
             echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
@@ -86,24 +88,36 @@
           '';
         };
 
-        # Heavy train stack — not used by CI (CI stays on default shell).
+        # Train shell: store python for mel/export deps; torch via precompiled wheels.
+        # (nixpkgs torch often compiles triton — bad on laptops / thin runners.)
         devShells.train = pkgs.mkShell {
           packages = with pkgs; [
             pythonTrainEnv
             ffmpeg
             git
             curl
+            steam-run
           ];
 
           shellHook = commonHook + ''
             echo "vizemes-align nix develop .#train"
-            echo "  Python includes torch/torchaudio/soundfile from nixpkgs (no .venv)."
-            echo "  Cycle:"
-            echo "    python3 scripts/build_train_tensors.py --subset test-clean"
-            echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
-            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy' 2>/dev/null; then
-              echo "  ERROR: train pythonEnv missing imports" >&2
-              exit 1
+            echo "  Store: numpy/textgrid/soundfile. Torch: precompiled CPU wheels (not nixpkgs)."
+            _ok() { "$1" -c 'import torch, torchaudio, soundfile, textgrid, numpy' 2>/dev/null; }
+            if _ok python3; then
+              :
+            elif [ -x .venv/bin/python ] && _ok .venv/bin/python; then
+              export PATH="$PWD/.venv/bin:$PATH"
+              echo "  (activated .venv with PyTorch wheels)"
+            else
+              echo "  One-time wheel install (precompiled — skips Triton source build):"
+              echo "    python3 -m venv .venv"
+              echo "    .venv/bin/pip install -U pip"
+              echo "    .venv/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu"
+              echo "    .venv/bin/pip install soundfile"
+              echo "  Then: source .venv/bin/activate"
+              echo "  Cycle:"
+              echo "    python3 scripts/build_train_tensors.py --subset test-clean"
+              echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
             fi
           '';
         };

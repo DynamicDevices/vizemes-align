@@ -36,8 +36,10 @@ git pull
 nix develop
 # Export path: requests/tqdm/numpy/textgrid come from the Nix store (no .venv).
 python3 -c 'import textgrid, numpy'
-# Train path (torch from nixpkgs — no .venv):
+# Train path: precompiled PyTorch CPU wheels (nixpkgs torch often builds Triton):
 #   nix develop .#train
+#   python3 -m venv .venv && .venv/bin/pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+#   .venv/bin/pip install soundfile && source .venv/bin/activate
 #   python3 scripts/build_train_tensors.py --subset test-clean
 # MFA via wrapped upstream micromamba (not nixpkgs micromamba):
 ./scripts/bootstrap_mfa_micromamba.sh
