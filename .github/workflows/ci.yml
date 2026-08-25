@@ -55,12 +55,18 @@ jobs:
 
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
+    # Runner workdir lives on /run tmpfs (2G). Keep pip/nix caches on disk.
+    env:
+      PIP_CACHE_DIR: /var/tmp/github-runner-cache/pip
+      XDG_CACHE_HOME: /var/tmp/github-runner-cache/xdg
+      TMPDIR: /var/tmp
     steps:
       - uses: actions/checkout@v7
 
       - name: Prove NixOS runner + flake shell
         run: |
           set -euo pipefail
+          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME"
           cat /etc/os-release | head -5
           nix --version
           command -v steam-run
