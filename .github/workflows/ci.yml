@@ -45,6 +45,14 @@ jobs:
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
 
+      - name: Upload Godot export artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-export-ci-fixture-ubuntu
+          path: data/export/ci-fixture/
+          if-no-files-found: error
+          retention-days: 14
+
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     steps:
@@ -62,3 +70,11 @@ jobs:
         run: |
           set -euo pipefail
           nix develop --command bash -lc 'python3 scripts/ci_test_export_fixture.py'
+
+      - name: Upload Godot export artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: godot-export-ci-fixture-nixos
+          path: data/export/ci-fixture/
+          if-no-files-found: error
+          retention-days: 14
