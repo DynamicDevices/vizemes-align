@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Sanity-check a viseme smoke ONNX (+ sidecar JSON) against tensor windows.
+"""Sanity-check a viseme smoke ONNX (+ sidecar JSON).
 
-Loads model.onnx next to model.json (or paths you pass). Builds the same
-flattened causal mel context as train_viseme_smoke.py, runs ONNX Runtime,
-and prints shape / argmax / optional frame accuracy vs labels.
+Default: run ~20 **hardcoded** labeled mel-context windows from
+`export/ci-smoke/demo_inputs.npz` and print a human table
+(expect viseme → predict viseme). That makes a good vs bad ONNX obvious.
 
-  nix develop .#train   # or any env with numpy + onnxruntime
-  pip install onnxruntime   # if missing
+Also supports live tensors via `--subset`.
+
+  nix develop .#train
+  python3 scripts/sanity_check_onnx.py
   python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx
-  python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1
+  python3 scripts/sanity_check_onnx.py --subset ci-fixture --limit 1
 """
 from __future__ import annotations
 
@@ -20,6 +22,8 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ONNX = ROOT / "export" / "ci-smoke" / "model.onnx"
+DEFAULT_DEMO = ROOT / "export" / "ci-smoke" / "demo_inputs.npz"
 
 
 def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndarray]:
@@ -36,22 +40,25 @@ def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndar
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("onnx", type=Path, nargs="?", default=DEFAULT_ONNX)
     ap.add_argument(
-        "onnx",
+        "--demo",
         type=Path,
-        nargs="?",
-        default=ROOT / "export" / "ci-smoke" / "model.onnx",
-        help="Path to model.onnx (sidecar model.json expected beside it)",
+        default=DEFAULT_DEMO,
+        help="Hardcoded labeled inputs (.npz with X,y). Empty path disables.",
     )
-    ap.add_argument("--subset", default="ci-fixture", help="data/tensors/<subset>")
-    ap.add_argument("--limit", type=int, default=1, help="Utterances to load (0=all)")
-    ap.add_argument("--max-frames", type=int, default=64, help="Cap windows for the check")
+    ap.add_argument("--subset", default="", help="If set, load data/tensors/<subset> instead of --demo")
+    ap.add_argument("--limit", type=int, default=1, help="Utterances when using --subset (0=all)")
+    ap.add_argument("--max-frames", type=int, default=64, help="Cap windows when using --subset")
     args = ap.parse_args()
 
     try:
         import onnxruntime as ort
     except ImportError:
-        print("Need onnxruntime: pip install onnxruntime", file=sys.stderr)
+        print(
+            "Need onnxruntime in this Python (use: nix develop .#train)",
+            file=sys.stderr,
+        )
         return 1
 
     onnx_path = args.onnx.resolve()
@@ -68,20 +75,19 @@ def main() -> int:
     n_mels = int(meta["n_mels"])
     in_features = int(meta["input_features"])
     n_visemes = int(meta["n_visemes"])
-    if in_features != ctx * n_mels:
-        print(
-            f"WARN meta input_features={in_features} != context*n_mels={ctx * n_mels}",
-            file=sys.stderr,
-        )
+    id_to_name = {int(v): str(k) for k, v in meta["visemes"].items()}
 
     sess = ort.InferenceSession(str(onnx_path), providers=["CPUExecutionProvider"])
     in_name = sess.get_inputs()[0].name
     out_name = sess.get_outputs()[0].name
 
-    tdir = ROOT / "data" / "tensors" / args.subset
-    index_path = tdir / "index.json"
-    used_real = False
-    if index_path.is_file():
+    source = "demo"
+    if args.subset:
+        tdir = ROOT / "data" / "tensors" / args.subset
+        index_path = tdir / "index.json"
+        if not index_path.is_file():
+            print(f"Missing {index_path}", file=sys.stderr)
+            return 1
         index = json.loads(index_path.read_text(encoding="utf-8"))
         utts = index["utterances"]
         if args.limit:
@@ -95,33 +101,59 @@ def main() -> int:
         X = np.concatenate(Xs, axis=0)
         y = np.concatenate(ys, axis=0)
         if args.max_frames and X.shape[0] > args.max_frames:
-            X = X[: args.max_frames]
-            y = y[: args.max_frames]
-        used_real = True
+            X, y = X[: args.max_frames], y[: args.max_frames]
+        source = f"tensors:{args.subset}"
     else:
-        # Synthetic batch: correct shape only (no label check).
-        X = np.random.randn(min(8, args.max_frames or 8), in_features).astype(np.float32)
-        y = None
-        print(f"No tensors at {tdir}; using random inputs (shape check only)")
+        demo_path = Path(args.demo) if args.demo else DEFAULT_DEMO
+        if not demo_path.is_file():
+            print(f"Missing demo inputs: {demo_path}", file=sys.stderr)
+            return 1
+        z = np.load(demo_path)
+        X = np.asarray(z["X"], dtype=np.float32)
+        y = np.asarray(z["y"], dtype=np.int64)
+        source = f"hardcoded:{demo_path.name}"
 
-    if X.shape[1] != in_features:
-        print(f"BAD input width {X.shape[1]} != meta {in_features}", file=sys.stderr)
+    if X.ndim != 2 or X.shape[1] != in_features:
+        print(f"BAD input shape {X.shape}; expected (_, {in_features})", file=sys.stderr)
         return 1
 
     logits = sess.run([out_name], {in_name: X})[0]
-    if logits.ndim != 2 or logits.shape[0] != X.shape[0] or logits.shape[1] != n_visemes:
-        print(f"BAD logits shape {logits.shape}; expected ({X.shape[0]}, {n_visemes})", file=sys.stderr)
+    if logits.shape != (X.shape[0], n_visemes):
+        print(f"BAD logits shape {logits.shape}", file=sys.stderr)
         return 1
 
     pred = logits.argmax(axis=-1)
-    print(f"ONNX_SANITY_OK file={onnx_path.name} in={in_name}{tuple(X.shape)} out={out_name}{tuple(logits.shape)}")
-    print(f"  meta: context={ctx} n_mels={n_mels} n_visemes={n_visemes} subset={meta.get('subset')}")
-    print(f"  sample pred[:8]={pred[:8].tolist()}")
-    if used_real and y is not None:
-        acc = float((pred == y).mean())
-        print(f"  frame_acc_vs_labels={acc:.3f} frames={len(y)} real_tensors={args.subset}")
-        # Spot-check: at least some class diversity or non-crash
-        print(f"  unique_pred={sorted(set(pred.tolist()))[:10]}")
+    ok = pred == y
+    acc = float(ok.mean()) if len(y) else 0.0
+
+    print(
+        f"ONNX_SANITY_OK file={onnx_path.name} source={source} "
+        f"in={in_name}{tuple(X.shape)} out={out_name}{tuple(logits.shape)}"
+    )
+    print(
+        f"  meta: context={ctx} n_mels={n_mels} n_visemes={n_visemes} "
+        f"subset={meta.get('subset')} best_val_acc={meta.get('best_val_acc')}"
+    )
+    print()
+    print(f"{'#':>3}  {'expect':<10} {'predict':<10}  ok  top1_logit")
+    print("-" * 48)
+    for i in range(len(y)):
+        exp = id_to_name.get(int(y[i]), str(int(y[i])))
+        pr = id_to_name.get(int(pred[i]), str(int(pred[i])))
+        mark = "Y" if ok[i] else "n"
+        print(f"{i:3d}  {exp:<10} {pr:<10}  {mark}  {float(logits[i, pred[i]]):7.3f}")
+    print("-" * 48)
+    print(f"frame_acc_vs_labels={acc:.3f}  N={len(y)}")
+
+    # Coverage vs full viseme set (human quality cue)
+    present = sorted(set(int(v) for v in y.tolist()))
+    missing = [id_to_name[i] for i in range(n_visemes) if i not in present]
+    print(f"labels_in_demo={ [id_to_name[i] for i in present] }")
+    if missing:
+        print(
+            f"labels_missing_from_demo={missing}  "
+            "(smoke fixture is tiny — train on a fuller subset for a real quality read)"
+        )
     return 0
 
 
