@@ -1,7 +1,8 @@
 # Godot GDExtension (in progress)
 
-**Status:** C runtime scaffold + vendored mel frontend. **Not** a loadable
-`.gdextension` yet (no godot-cpp / ONNX Runtime link).
+**Status:** C runtime + mel frontend. **ORT link** when `ORT_ROOT` is set
+(nix `.#train` or official release tarball). Still **not** a loadable
+`.gdextension` (godot-cpp next).
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
 Waveform→features stays swappable (mel, LPC, …). Each exported ONNX keeps its
@@ -13,11 +14,14 @@ own sidecar contract (`export/ci-smoke/model.json`).
 |------|------|
 | `include/feature_frontend.h` | Pluggable frontend ops |
 | `include/viseme_runtime.h` | PCM → viseme weights (Godot-facing SoT) |
+| `include/sidecar_json.h` | Tiny `model.json` reader (no cJSON) |
 | `frontends/mel/` | First impl (vendored mel C + ORIGIN.md) |
 | `src/mel_frontend.c` | Mel → `VizemesFrontendOps` |
-| `src/viseme_runtime_stub.c` | API stub until ONNX Runtime linked |
-| `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` |
-| `../scripts/sanity_check_onnx.py` | Python ORT harness (works today) |
+| `src/viseme_runtime.c` | ORT-backed runtime (`ORT_ROOT` required) |
+| `src/viseme_runtime_stub.c` | API stub when built without ORT |
+| `tools/smoke_context.c` | Host smoke: flat mel context → softmax |
+| `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
+| `../scripts/sanity_check_onnx.py` | Python ORT harness |
 
 ## Target Godot shape ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync))
 
@@ -29,24 +33,31 @@ weight vector so the avatar path can stay.
 Smoke MLP: 15 classes (see `export/ci-smoke/model.json`); map `silence`↔`sil`,
 `ih`/`oh`/`ou`↔`I`/`O`/`U` as needed. No laughter channel yet.
 
-## Host build (no Godot)
+## Host build
 
 ```bash
 cd gdextension
-make
-# → build/libvizemes_runtime.a  (mel + stub; push_pcm returns -1 until ORT)
+make                    # stub archive (no ORT)
+# Preferred (Hydra-cached C lib on nixos-25.11):
+nix develop .#train --command bash -c 'cd gdextension && make smoke'
+# Laptop without Nix — official CPU tarball:
+#   curl -L -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
+#   tar -C /tmp -xzf /tmp/ort.tgz
+#   make ORT_ROOT=/tmp/onnxruntime-linux-x64-1.20.1 smoke
 ```
+
+`make smoke` dumps `demo_inputs.npz` row 0 → `demo_row0.f32`, runs
+`smoke_context`, checks argmax vs label.
 
 ## Next
 
-1. Link ONNX Runtime in `vizeme_runtime` (load `model.onnx`, causal context).
-2. godot-cpp GDExtension node: push mic/PCM chunks → `PackedFloat32Array` weights.
-3. Drop into a lipsync-style scene calling `set_visemes`.
+1. godot-cpp GDExtension node: push mic/PCM chunks → `PackedFloat32Array` weights.
+2. Drop into a lipsync-style scene calling `set_visemes`.
 
-Until then:
+Python path (unchanged):
 
 ```bash
-python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx
+nix develop .#train --command python3 scripts/sanity_check_onnx.py
 ```
 
 ## Generate a fresh smoke ONNX

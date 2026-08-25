@@ -10,3 +10,5 @@ __pycache__/
 result
 .direnv/
 gdextension/build/
+export/ci-smoke/demo_row0.f32
+

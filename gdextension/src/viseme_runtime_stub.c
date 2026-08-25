@@ -1,6 +1,5 @@
 /**
- * Stub runtime — API shape only until ONNX Runtime is linked.
- * Returns -1 / NULL so harnesses fail closed rather than fake inference.
+ * Stub runtime — API shape only until ONNX Runtime is linked (make without ORT_ROOT).
  */
 #include "viseme_runtime.h"
 
@@ -20,7 +19,6 @@ VizemesRuntime *vizemes_runtime_create(const char *model_json_path,
 	if (!frontend) {
 		return NULL;
 	}
-	/* TODO: parse model.json, OrtCreateSession, allocate causal context buffer */
 	VizemesRuntime *rt = (VizemesRuntime *)calloc(1, sizeof(*rt));
 	if (!rt) {
 		return NULL;
@@ -51,6 +49,25 @@ int vizemes_runtime_push_pcm(VizemesRuntime *rt, const float *pcm, int n_samples
 	if (n_visemes_out) {
 		*n_visemes_out = 0;
 	}
-	/* Not wired: use scripts/sanity_check_onnx.py until ORT lands. */
 	return -1;
+}
+
+int vizemes_runtime_run_context(VizemesRuntime *rt, const float *flat_ctx, float *viseme_out)
+{
+	(void)rt;
+	(void)flat_ctx;
+	(void)viseme_out;
+	return -1;
+}
+
+int vizemes_runtime_n_visemes(const VizemesRuntime *rt)
+{
+	(void)rt;
+	return 0;
+}
+
+int vizemes_runtime_input_features(const VizemesRuntime *rt)
+{
+	(void)rt;
+	return 0;
 }

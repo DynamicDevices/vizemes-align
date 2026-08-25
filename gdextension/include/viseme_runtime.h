@@ -29,9 +29,18 @@ VizemesRuntime *vizemes_runtime_create(const char *model_json_path,
 
 void vizemes_runtime_destroy(VizemesRuntime *rt);
 
-/** Push mono PCM @ model sample_rate; emit up to max_out frames of n_visemes weights. */
+/** Push mono PCM @ model sample_rate; emit up to max_frames of n_visemes softmax weights. */
 int vizemes_runtime_push_pcm(VizemesRuntime *rt, const float *pcm, int n_samples,
 			     float *viseme_out, int max_frames, int *n_visemes_out);
+
+/**
+ * Run one precomputed flat mel context (length = input_features from sidecar).
+ * Writes n_visemes softmax weights. Used by host smoke (skips PCM→mel).
+ */
+int vizemes_runtime_run_context(VizemesRuntime *rt, const float *flat_ctx, float *viseme_out);
+
+int vizemes_runtime_n_visemes(const VizemesRuntime *rt);
+int vizemes_runtime_input_features(const VizemesRuntime *rt);
 
 #ifdef __cplusplus
 }
