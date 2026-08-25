@@ -32,8 +32,8 @@
     "fmin": 50.0,
     "fmax": 8000.0
   },
-  "best_val_acc": 0.8333333134651184,
-  "frames_trained": 32,
+  "best_val_acc": 0.15625,
+  "frames_trained": 162,
   "utterances": 1,
   "onnx": "model.onnx",
   "note": "Input is flattened causal mel context: (batch, context*n_mels). Runtime mel SoT: OpenLipSync/audio/mel_spectrogram.c (match torchaudio)."
