@@ -53,6 +53,43 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Capped smoke → ONNX for Julian to download (ubuntu; not NixOS /run tmpfs).
+  smoke-onnx:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: install train deps (CPU torch)
+        run: |
+          set -euo pipefail
+          pip install -r requirements.txt
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install soundfile
+
+      - name: build tensors + export smoke ONNX
+        run: |
+          set -euo pipefail
+          # Same tiny fixture as Godot export CI (no LibriSpeech on runner).
+          python scripts/ci_test_export_fixture.py
+          python scripts/build_train_tensors.py --subset ci-fixture
+          python scripts/train_viseme_smoke.py --subset ci-fixture --epochs 40 --hidden 64 \
+            --export-onnx export/ci-smoke/model.onnx
+          test -f export/ci-smoke/model.onnx
+          test -f export/ci-smoke/model.json
+          python -c 'import json; print("best_val_acc", json.load(open("export/ci-smoke/model.json"))["best_val_acc"])'
+
+      - name: Upload smoke ONNX artefact
+        uses: actions/upload-artifact@v7
+        with:
+          name: viseme-smoke-onnx
+          path: export/ci-smoke/
+          if-no-files-found: error
+          retention-days: 14
+
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     # Runner workdir lives on /run tmpfs (2G). Keep pip/nix caches on disk.
