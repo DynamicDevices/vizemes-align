@@ -47,6 +47,12 @@ def main() -> int:
         help="Cap total training windows after concat (0 = unlimited).",
     )
     ap.add_argument("--hidden", type=int, default=64, help="MLP hidden size (default 64 for smoke)")
+    ap.add_argument(
+        "--export-onnx",
+        type=Path,
+        default=None,
+        help="Write ONNX (+ sidecar JSON) after training, e.g. data/export/smoke/model.onnx",
+    )
     args = ap.parse_args()
 
     import torch
@@ -85,8 +91,9 @@ def main() -> int:
     Xva, yva = X[-n_val:], y[-n_val:]
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    in_features = int(X.shape[1])
     model = nn.Sequential(
-        nn.Linear(X.shape[1], args.hidden),
+        nn.Linear(in_features, args.hidden),
         nn.ReLU(),
         nn.Linear(args.hidden, n_visemes),
     ).to(device)
@@ -126,6 +133,42 @@ def main() -> int:
         f"frames={n} utterances={len(utterances)} hidden={args.hidden} "
         f"n_visemes={n_visemes} best_val_acc={best:.3f} device={device}"
     )
+
+    if args.export_onnx is not None:
+        out = args.export_onnx
+        out.parent.mkdir(parents=True, exist_ok=True)
+        model_cpu = model.to("cpu").eval()
+        dummy = torch.zeros(1, in_features, dtype=torch.float32)
+        torch.onnx.export(
+            model_cpu,
+            dummy,
+            str(out),
+            input_names=["mel_context"],
+            output_names=["viseme_logits"],
+            dynamic_axes={"mel_context": {0: "batch"}, "viseme_logits": {0: "batch"}},
+            opset_version=17,
+        )
+        meta = {
+            "model": "viseme_smoke_mlp",
+            "subset": args.subset,
+            "context_frames": args.context,
+            "n_mels": int(index["audio"]["n_mels"]),
+            "input_features": in_features,
+            "hidden": args.hidden,
+            "n_visemes": n_visemes,
+            "visemes": index["visemes"],
+            "audio": index["audio"],
+            "best_val_acc": best,
+            "frames_trained": n,
+            "utterances": len(utterances),
+            "onnx": out.name,
+            "note": "Input is flattened causal mel context: (batch, context*n_mels). "
+            "Runtime mel SoT: OpenLipSync/audio/mel_spectrogram.c (match torchaudio).",
+        }
+        meta_path = out.with_suffix(".json")
+        meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
+        print(f"ONNX_OK {out} meta={meta_path}")
+
     return 0
 
 
