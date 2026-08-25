@@ -78,9 +78,13 @@ jobs:
           python scripts/build_train_tensors.py --subset ci-fixture
           python scripts/train_viseme_smoke.py --subset ci-fixture --epochs 40 --hidden 64 \
             --export-onnx export/ci-smoke/model.onnx
+          python scripts/build_demo_inputs.py --subset ci-fixture
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/model.json
+          test -f export/ci-smoke/demo_inputs.csv
           python -c 'import json; print("best_val_acc", json.load(open("export/ci-smoke/model.json"))["best_val_acc"])'
+          python scripts/sanity_check_onnx.py | tee /tmp/onnx-sanity.txt
+          grep -q 'hit_rate=' /tmp/onnx-sanity.txt
 
       - name: Upload smoke ONNX artefact
         uses: actions/upload-artifact@v7

@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
-"""CI: build a tiny TextGrid+wav fixture and run export_godot_package."""
+"""CI: tiny multi-viseme fixture (audible tones + phones covering all 15 visemes).
+
+Previously used a silent wav → all-zero mel tensors → useless ONNX sanity table.
+"""
 from __future__ import annotations
 
+import math
+import struct
 import sys
 import wave
 from pathlib import Path
@@ -9,46 +14,78 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
+# One ARPA phone per viseme class (see configs/viseme_map_en_us_arpa.json).
+PHONE_SEGMENTS = [
+    "sil",
+    "P",
+    "F",
+    "TH",
+    "T",
+    "K",
+    "CH",
+    "S",
+    "N",
+    "R",
+    "AA0",
+    "EH0",
+    "IH0",
+    "OW0",
+    "UW0",
+]
+SEG_S = 0.12  # seconds per phone
+SR = 16000
 
-def write_silent_wav(path: Path, seconds: float = 0.5, sr: int = 16000) -> None:
-    n = int(seconds * sr)
+
+def write_tone_wav(path: Path) -> float:
+    """Non-silent mono wav: distinct sine per phone segment → non-zero mels."""
     path.parent.mkdir(parents=True, exist_ok=True)
+    frames: list[int] = []
+    for i, _phone in enumerate(PHONE_SEGMENTS):
+        freq = 180.0 + i * 70.0
+        n = int(SEG_S * SR)
+        for t in range(n):
+            # Mild amplitude envelope so segments are separable in mel space.
+            env = 0.35 * (0.55 + 0.45 * math.sin(math.pi * t / max(n - 1, 1)))
+            sample = env * math.sin(2.0 * math.pi * freq * t / SR)
+            frames.append(int(max(-1.0, min(1.0, sample)) * 32767.0))
+    duration = len(frames) / SR
     with wave.open(str(path), "w") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(b"\x00\x00" * n)
+        w.setframerate(SR)
+        w.writeframes(b"".join(struct.pack("<h", s) for s in frames))
+    return duration
 
 
-def write_minimal_textgrid(path: Path, duration: float = 0.5) -> None:
-    # Praat long TextGrid — class must be IntervalTier (singular)
+def write_multiviseme_textgrid(path: Path, duration: float) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        f"""File type = "ooTextFile"
-Object class = "TextGrid"
-
-xmin = 0
-xmax = {duration}
-tiers? <exists>
-size = 1
-item []:
-    item [1]:
-        class = "IntervalTier"
-        name = "phones"
-        xmin = 0
-        xmax = {duration}
-        intervals: size = 2
-        intervals [1]:
-            xmin = 0
-            xmax = 0.2
-            text = "sil"
-        intervals [2]:
-            xmin = 0.2
-            xmax = {duration}
-            text = "AH0"
-""",
-        encoding="utf-8",
-    )
+    n = len(PHONE_SEGMENTS)
+    lines = [
+        'File type = "ooTextFile"',
+        'Object class = "TextGrid"',
+        "",
+        "xmin = 0",
+        f"xmax = {duration}",
+        "tiers? <exists>",
+        "size = 1",
+        "item []:",
+        "    item [1]:",
+        '        class = "IntervalTier"',
+        '        name = "phones"',
+        "        xmin = 0",
+        f"        xmax = {duration}",
+        f"        intervals: size = {n}",
+    ]
+    for i, phone in enumerate(PHONE_SEGMENTS):
+        xmin = i * SEG_S
+        xmax = duration if i == n - 1 else (i + 1) * SEG_S
+        lines += [
+            f"        intervals [{i + 1}]:",
+            f"            xmin = {xmin}",
+            f"            xmax = {xmax}",
+            f'            text = "{phone}"',
+        ]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def main() -> int:
@@ -58,14 +95,12 @@ def main() -> int:
     prepared.mkdir(parents=True, exist_ok=True)
     aligned.mkdir(parents=True, exist_ok=True)
     utt = "ci-0001"
-    write_silent_wav(prepared / f"{utt}.wav")
-    write_minimal_textgrid(aligned / f"{utt}.TextGrid")
-    # also put wav next to TextGrid for exporter fallback
-    write_silent_wav(aligned / f"{utt}.wav")
+    duration = write_tone_wav(prepared / f"{utt}.wav")
+    write_multiviseme_textgrid(aligned / f"{utt}.TextGrid", duration)
+    write_tone_wav(aligned / f"{utt}.wav")
 
     import export_godot_package as egp
 
-    # call main via argv
     sys.argv = [
         "export_godot_package.py",
         "--subset",
