@@ -65,6 +65,8 @@ evaluates (no `NIXPKGS_ALLOW_UNFREE` / `--impure` needed). Bare
 cd vizemes-align
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
+# Train / mel smoke (torch — heavy; not pulled by CI / nix develop):
+#   pip install -r requirements-train.txt
 
 # 1) Download + extract LibriSpeech subset
 python scripts/download_librispeech.py --dataset test-clean

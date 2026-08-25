@@ -22,8 +22,9 @@
           tqdm
           pip
           numpy
-          # textgrid / torch / torchaudio via .venv (requirements.txt) —
-          # not always in nixpkgs for this channel / heavy for pure flake
+          # textgrid via .venv (requirements.txt) — not always in nixpkgs.
+          # torch/torchaudio: requirements-train.txt only (too heavy for CI
+          # workdirs on /run tmpfs).
         ]);
       in {
         devShells.default = pkgs.mkShell {
@@ -54,25 +55,26 @@
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download acoustic english_us_arpa"
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download dictionary english_us_arpa"
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download g2p english_us_arpa"
-            # textgrid/torch/torchaudio are not in flake pythonEnv; use a local venv.
-            # Prefer existing .venv when it already has the train stack (runner workdirs persist).
+            echo "  Train stack (torch): pip install -r requirements-train.txt  # not auto in CI"
+            # textgrid is not in flake pythonEnv; use a local venv for export deps only.
+            # Prefer existing .venv when it already has textgrid (runner workdirs persist).
             _vizemes_py_ok() {
-              "$1" -c 'import textgrid, numpy, torch, torchaudio' 2>/dev/null
+              "$1" -c 'import textgrid, numpy' 2>/dev/null
             }
             if _vizemes_py_ok python3; then
               :
             elif [ -x .venv/bin/python ] && _vizemes_py_ok .venv/bin/python; then
               export PATH="$PWD/.venv/bin:$PATH"
-              echo "  (activated .venv for requirements.txt train stack)"
+              echo "  (activated .venv for requirements.txt)"
             else
               if [ ! -x .venv/bin/python ]; then
                 python3 -m venv .venv
               fi
               .venv/bin/pip -q install -r requirements.txt
               export PATH="$PWD/.venv/bin:$PATH"
-              echo "  (activated .venv for requirements.txt train stack)"
+              echo "  (activated .venv for requirements.txt)"
               if ! _vizemes_py_ok python3; then
-                echo "  ERROR: textgrid/numpy/torch/torchaudio still missing after venv pip install" >&2
+                echo "  ERROR: textgrid/numpy still missing after venv pip install" >&2
                 exit 1
               fi
             fi
