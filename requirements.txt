@@ -3,3 +3,5 @@ tqdm>=4.66
 # TextGrid parsing for Godot export / CI
 textgrid>=1.5
 numpy>=1.26
+# ONNX smoke harness (scripts/sanity_check_onnx.py) — light; train stack stays in requirements-train.txt
+onnxruntime>=1.17

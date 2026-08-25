@@ -6,5 +6,7 @@ data/export/
 .venv/
 __pycache__/
 *.pyc
+*.o
 result
 .direnv/
+gdextension/build/
