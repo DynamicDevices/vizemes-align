@@ -69,6 +69,8 @@
             export TEMP="$TMPDIR"
             mkdir -p "$TMPDIR"
         '';
+        # C/C++ ORT lib for gdextension (python onnxruntime is separate in pythonTrainEnv).
+        ortC = pkgsTrain.onnxruntime;
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -105,7 +107,6 @@
         # Train shell: all store packages from nixos-25.11 (Hydra cache).
         # No .venv — nixpkgs unstable/26.05 often rebuild Triton locally.
         # pkgsTrain.onnxruntime = C/C++ lib (gdextension); python onnxruntime is separate.
-        ortC = pkgsTrain.onnxruntime;
         devShells.train = pkgsTrain.mkShell {
           packages = with pkgsTrain; [
             pythonTrainEnv
