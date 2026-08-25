@@ -1,0 +1,39 @@
+{
+  "subset": "ci-fixture",
+  "audio": {
+    "sample_rate": 16000,
+    "n_fft": 1024,
+    "window_length_samples": 400,
+    "hop_length_samples": 160,
+    "n_mels": 80,
+    "fmin": 50.0,
+    "fmax": 8000.0
+  },
+  "viseme_map": "viseme_map_en_us_arpa.json",
+  "visemes": {
+    "silence": 0,
+    "PP": 1,
+    "FF": 2,
+    "TH": 3,
+    "DD": 4,
+    "kk": 5,
+    "CH": 6,
+    "SS": 7,
+    "nn": 8,
+    "RR": 9,
+    "aa": 10,
+    "E": 11,
+    "ih": 12,
+    "oh": 13,
+    "ou": 14
+  },
+  "fps": 100.0,
+  "utterances": [
+    {
+      "id": "ci-0001",
+      "path": "ci-0001.npz",
+      "frames": 51,
+      "n_mels": 80
+    }
+  ]
+}
