@@ -37,8 +37,24 @@
           tqdm
           numpy
           textgrid
-          # torch/torchaudio: requirements-train.txt only (heavy; optional).
+          # torch/torchaudio: see devShells.train (heavy; not in default/CI).
         ]);
+        pythonTrainEnv = py.withPackages (ps: with ps; [
+          requests
+          tqdm
+          numpy
+          textgrid
+          soundfile
+          torch
+          torchaudio
+        ]);
+        commonHook = ''
+            export VIZEMES_ALIGN_ROOT="$(pwd)"
+            export TMPDIR="''${VIZEMES_TMPDIR:-/tmp}"
+            export TMP="$TMPDIR"
+            export TEMP="$TMPDIR"
+            mkdir -p "$TMPDIR"
+        '';
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -49,16 +65,10 @@
             steam-run  # FHS wrap for upstream micromamba on NixOS
           ];
 
-          shellHook = ''
-            export VIZEMES_ALIGN_ROOT="$(pwd)"
-            # Durable temp for micromamba/libmamba (nix-shell TMPDIR breaks steam-run)
-            export TMPDIR="''${VIZEMES_TMPDIR:-/tmp}"
-            export TMP="$TMPDIR"
-            export TEMP="$TMPDIR"
-            mkdir -p "$TMPDIR"
-            echo "vizemes-align nix develop"
+          shellHook = commonHook + ''
+            echo "vizemes-align nix develop (default = export/MFA)"
             echo "  Python (requests/tqdm/numpy/textgrid) + ffmpeg from the Nix store."
-            echo "  No .venv for the export path — prefer store packages on NixOS."
+            echo "  Train: nix develop .#train   # torch/torchaudio/soundfile in store — no .venv"
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
             echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
             echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
@@ -69,9 +79,30 @@
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download acoustic english_us_arpa"
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download dictionary english_us_arpa"
             echo "    ./scripts/mamba_nixos.sh run -n mfa mfa model download g2p english_us_arpa"
-            echo "  Train stack (torch, optional): python3 -m venv .venv && .venv/bin/pip install -r requirements-train.txt"
             if ! python3 -c 'import textgrid, numpy' 2>/dev/null; then
               echo "  ERROR: textgrid/numpy missing from flake pythonEnv" >&2
+              exit 1
+            fi
+          '';
+        };
+
+        # Heavy train stack — not used by CI (CI stays on default shell).
+        devShells.train = pkgs.mkShell {
+          packages = with pkgs; [
+            pythonTrainEnv
+            ffmpeg
+            git
+            curl
+          ];
+
+          shellHook = commonHook + ''
+            echo "vizemes-align nix develop .#train"
+            echo "  Python includes torch/torchaudio/soundfile from nixpkgs (no .venv)."
+            echo "  Cycle:"
+            echo "    python3 scripts/build_train_tensors.py --subset test-clean"
+            echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
+            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy' 2>/dev/null; then
+              echo "  ERROR: train pythonEnv missing imports" >&2
               exit 1
             fi
           '';

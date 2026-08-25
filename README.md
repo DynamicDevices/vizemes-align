@@ -36,6 +36,9 @@ git pull
 nix develop
 # Export path: requests/tqdm/numpy/textgrid come from the Nix store (no .venv).
 python3 -c 'import textgrid, numpy'
+# Train path (torch from nixpkgs — no .venv):
+#   nix develop .#train
+#   python3 scripts/build_train_tensors.py --subset test-clean
 # MFA via wrapped upstream micromamba (not nixpkgs micromamba):
 ./scripts/bootstrap_mfa_micromamba.sh
 ./scripts/mamba_nixos.sh create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
