@@ -64,12 +64,13 @@ jobs:
           cat /etc/os-release | head -5
           nix --version
           command -v steam-run
-          nix develop --command bash -lc 'python3 --version; ffmpeg -version | head -1'
+          # Non-login bash: login (-l) resets PATH and drops flake shellHook .venv.
+          nix develop --command bash -c 'python3 --version; ffmpeg -version | head -1'
 
       - name: export_godot_package on fixture (nix shell)
         run: |
           set -euo pipefail
-          nix develop --command bash -lc 'python3 scripts/ci_test_export_fixture.py'
+          nix develop --command bash -c 'python3 -c "import textgrid"; python3 scripts/ci_test_export_fixture.py'
 
       - name: Upload Godot export artefact
         uses: actions/upload-artifact@v7
