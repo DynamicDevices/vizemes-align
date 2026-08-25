@@ -3,8 +3,10 @@
 
   inputs = {
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
-    # Hydra-cached torch/triton (python313) — avoid compiling Triton on laptops.
-    nixpkgs-train.url = "github:NixOS/nixpkgs/nixos-26.05";
+    # Train/torch: pin a channel where Hydra has prebuilt torch+triton (no
+    # local Triton compile). Verified 2026-08-25: nixos-25.11 substitutes;
+    # unstable / 26.05 often rebuild triton on this host.
+    nixpkgs-train.url = "github:NixOS/nixpkgs/nixos-25.11";
     flake-utils.url = "github:numtide/flake-utils";
   };
 
@@ -22,12 +24,12 @@
           config.allowUnfree = true;
         };
         py = pkgs.python312;
-        pyTrain = pkgsTrain.python313;
-        mkTextgrid = pyPkgs: pkgsRef: pyPkgs.buildPythonPackage rec {
+        pyTrain = pkgsTrain.python312;
+        mkTextgrid = pyPkgs: pyPkgs.buildPythonPackage rec {
           pname = "textgrid";
           version = "1.6.1";
           pyproject = true;
-          src = pkgsRef.fetchurl {
+          src = pkgs.fetchurl {
             # PyPI sdist is TextGrid-*.tar.gz (capital T/G).
             url = "https://files.pythonhosted.org/packages/cf/6f/701ef6aa56cf85c8965b7ff929f0766e0e8311c4478937eeee9441bf9663/TextGrid-1.6.1.tar.gz";
             hash = "sha256-DT+NT1EUdHd84ofS7O8JBXPA5jFBqnPG9ABjfh7KymM=";
@@ -36,8 +38,8 @@
           doCheck = false;
           pythonImportsCheck = [ "textgrid" ];
         };
-        textgrid = mkTextgrid py.pkgs pkgs;
-        textgridTrain = mkTextgrid pyTrain.pkgs pkgsTrain;
+        textgrid = mkTextgrid py.pkgs;
+        textgridTrain = mkTextgrid pyTrain.pkgs;
         # MFA via micromamba; keep Python export path pure-Nix (no .venv).
         pythonEnv = py.withPackages (ps: with ps; [
           requests
@@ -45,7 +47,7 @@
           numpy
           textgrid
         ]);
-        # Train: nixos-26.05 python313 + Hydra torch/triton/torchaudio (no venv).
+        # Full train stack from nixpkgs-train binary cache — no .venv.
         pythonTrainEnv = pyTrain.withPackages (ps: with ps; [
           requests
           tqdm
@@ -54,7 +56,7 @@
           soundfile
           torch
           torchaudio
-          triton
+          # triton comes in as a torch dep when present on the channel
         ]);
         commonHook = ''
             export VIZEMES_ALIGN_ROOT="$(pwd)"
@@ -76,7 +78,7 @@
           shellHook = commonHook + ''
             echo "vizemes-align nix develop (default = export/MFA)"
             echo "  Python (requests/tqdm/numpy/textgrid) + ffmpeg from the Nix store."
-            echo "  Train: nix develop .#train   # nixos-26.05 python313 + Hydra torch/triton"
+            echo "  Train: nix develop .#train   # torch/torchaudio from nixpkgs-25.11 cache"
             echo "  MFA on NixOS (stub-ld): steam-run is in this shell; prefer:"
             echo "    ./scripts/mamba_nixos.sh ...   # or ./scripts/bootstrap_mfa_micromamba.sh"
             echo "  Permanent: programs.nix-ld.enable = true; then bare micromamba works."
@@ -94,27 +96,29 @@
           '';
         };
 
-        # Store-only train shell (no .venv). Uses nixos-26.05 for Hydra-built torch/triton.
-        # First entry should download from cache.nixos.org — if it compiles, check substituters.
+        # Train shell: all store packages from nixos-25.11 (Hydra cache).
+        # No .venv — nixpkgs unstable/26.05 often rebuild Triton locally.
         devShells.train = pkgsTrain.mkShell {
           packages = with pkgsTrain; [
             pythonTrainEnv
             ffmpeg
             git
             curl
+            steam-run
           ];
 
           shellHook = commonHook + ''
             echo "vizemes-align nix develop .#train"
-            echo "  nixos-26.05 python313 + torch/torchaudio/triton from Hydra (no .venv)."
-            echo "  Expect store downloads from cache.nixos.org — not a Triton source build."
+            echo "  Store (nixpkgs nixos-25.11): numpy/textgrid/soundfile/torch/torchaudio"
+            echo "  No .venv. First enter may download ~1GiB from cache.nixos.org (not compile)."
             echo "  Cycle:"
             echo "    python3 scripts/build_train_tensors.py --subset test-clean"
             echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
-            if ! python3 -c 'import torch, torchaudio, triton, soundfile, textgrid, numpy' 2>/dev/null; then
+            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy' 2>/dev/null; then
               echo "  ERROR: train pythonEnv missing imports" >&2
               exit 1
             fi
+            python3 -c 'import torch; print("  torch", torch.__version__, "cuda", torch.cuda.is_available())'
           '';
         };
       });

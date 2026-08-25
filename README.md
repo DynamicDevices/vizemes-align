@@ -36,9 +36,10 @@ git pull
 nix develop
 # Export path: requests/tqdm/numpy/textgrid come from the Nix store (no .venv).
 python3 -c 'import textgrid, numpy'
-# Train path (store-only, nixos-26.05 Hydra torch/triton — no .venv):
-#   nix develop .#train
-#   python3 scripts/build_train_tensors.py --subset test-clean
+# Train path (store-only; nixpkgs-train = nixos-25.11 Hydra cache — no .venv):
+nix develop .#train
+python3 scripts/build_train_tensors.py --subset test-clean
+python3 scripts/train_viseme_smoke.py --subset test-clean --context 20
 # MFA via wrapped upstream micromamba (not nixpkgs micromamba):
 ./scripts/bootstrap_mfa_micromamba.sh
 ./scripts/mamba_nixos.sh create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
@@ -49,7 +50,9 @@ python3 -c 'import textgrid, numpy'
 ```
 
 `textgrid` is not in nixpkgs, so the flake builds it from PyPI into the store.
-Optional train/torch stays in `requirements-train.txt` (venv only if you want that stack).
+Train uses `nixpkgs-train` (`nixos-25.11`) so torch/triton **download** from
+`cache.nixos.org` — unstable/26.05 often compile Triton locally. Non-NixOS /
+CI can still use `requirements.txt` (+ optional `requirements-train.txt`).
 
 The flake includes `steam-run` and sets `allowUnfree` so plain `nix develop`
 evaluates (no `NIXPKGS_ALLOW_UNFREE` / `--impure` needed). Bare
