@@ -9,7 +9,7 @@ jobs:
   scripts-and-export:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: bash -n scripts
         run: |
@@ -35,7 +35,7 @@ jobs:
           out=$(HOME=/tmp/vizemes-ci-home PATH=/usr/bin:/bin bash scripts/resolve_micromamba.sh)
           test "$out" = "/tmp/vizemes-ci-home/micromamba/bin/micromamba"
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
@@ -48,7 +48,7 @@ jobs:
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Prove NixOS runner + flake shell
         run: |
