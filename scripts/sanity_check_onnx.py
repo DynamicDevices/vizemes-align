@@ -2,11 +2,11 @@
 #!/usr/bin/env python3
 """ONNX sanity — short & readable, not clever.
 
-Loads export/ci-smoke/demo_inputs.csv (20 fixed mel windows).
+Loads export/ci-smoke/demo_inputs.csv (one probe per viseme when available).
 Runs inference one row at a time; prints expect vs predict.
 
   nix develop .#train --command python3 scripts/sanity_check_onnx.py
-  python3 scripts/export_demo_csv.py   # rebuild CSV from demo_inputs.npz
+  python3 scripts/build_demo_inputs.py   # rebuild CSV/npz from tensors
 """
 from __future__ import annotations
 
