@@ -69,6 +69,8 @@
             export TEMP="$TMPDIR"
             mkdir -p "$TMPDIR"
         '';
+        # C/C++ ORT lib for gdextension (python onnxruntime is separate in pythonTrainEnv).
+        ortC = pkgsTrain.onnxruntime;
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -104,18 +106,24 @@
 
         # Train shell: all store packages from nixos-25.11 (Hydra cache).
         # No .venv — nixpkgs unstable/26.05 often rebuild Triton locally.
+        # pkgsTrain.onnxruntime = C/C++ lib (gdextension); python onnxruntime is separate.
         devShells.train = pkgsTrain.mkShell {
           packages = with pkgsTrain; [
             pythonTrainEnv
+            onnxruntime # C API headers + libonnxruntime for gdextension/
             ffmpeg
             git
             curl
             steam-run
+            gcc
+            gnumake
           ];
 
           shellHook = commonHook + ''
+            export ORT_ROOT="${ortC}"
             echo "vizemes-align nix develop .#train"
             echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/torch/torchaudio/onnxruntime"
+            echo "  ORT_ROOT=$ORT_ROOT  # C lib for: cd gdextension && make smoke"
             echo "  No .venv. First enter may download ~1GiB from cache.nixos.org (not compile)."
             echo "  ONNX sanity:"
             echo "    python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1"
@@ -127,6 +135,9 @@
               exit 1
             fi
             python3 -c 'import torch, onnxruntime as ort; print("  torch", torch.__version__, "cuda", torch.cuda.is_available(), "ort", ort.__version__)'
+            if [ ! -f "$ORT_ROOT/include/onnxruntime_c_api.h" ]; then
+              echo "  WARN: onnxruntime C headers missing under ORT_ROOT" >&2
+            fi
           '';
         };
       });
