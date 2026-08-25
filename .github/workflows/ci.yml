@@ -68,7 +68,7 @@ jobs:
           set -euo pipefail
           pip install -r requirements.txt
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install soundfile
+          pip install soundfile onnx onnxscript
 
       - name: build tensors + export smoke ONNX
         run: |
