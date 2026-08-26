@@ -169,6 +169,21 @@ jobs:
           set -euo pipefail
           nix develop --command bash -c 'python3 -c "import textgrid"; python3 scripts/ci_test_export_fixture.py'
 
+      - name: godot-onnx-loader Nix Godot csv_smoke (Julian path)
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --recurse-submodules \
+            https://github.com/DynamicDevices/godot-onnx-loader.git /var/tmp/godot-onnx-loader-ci
+          cd /var/tmp/godot-onnx-loader-ci
+          nix develop --command bash -c '
+            set -euo pipefail
+            scons platform=linux target=template_debug
+            scons platform=linux target=template_debug smoke-dlopen-ort
+            bash tools/godot_csv_smoke.sh
+            grep -q GODOT_ONNX_CSV_SMOKE_OK /tmp/godot-onnx-loader-csv-smoke.txt
+            ! grep -q "free(): invalid size" /tmp/godot-onnx-loader-csv-smoke.txt
+          '
+
       - name: Upload Godot export artefact
         uses: actions/upload-artifact@v7
         with:
