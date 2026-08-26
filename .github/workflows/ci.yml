@@ -177,6 +177,7 @@ jobs:
       - name: godot-onnx-loader Nix Godot csv_smoke (Julian path)
         run: |
           set -euo pipefail
+          rm -rf /var/tmp/godot-onnx-loader-ci
           git clone --depth 1 --recurse-submodules \
             https://github.com/DynamicDevices/godot-onnx-loader.git /var/tmp/godot-onnx-loader-ci
           cd /var/tmp/godot-onnx-loader-ci
