@@ -70,7 +70,8 @@
             mkdir -p "$TMPDIR"
         '';
         # C/C++ ORT lib for gdextension (python onnxruntime is separate in pythonTrainEnv).
-        ortC = pkgsTrain.onnxruntime;
+        ortPkg = pkgsTrain.onnxruntime;
+        ortDev = pkgsTrain.lib.getDev ortPkg;
       in {
         devShells.default = pkgs.mkShell {
           packages = with pkgs; [
@@ -110,7 +111,7 @@
         devShells.train = pkgsTrain.mkShell {
           packages = with pkgsTrain; [
             pythonTrainEnv
-            onnxruntime # C API headers + libonnxruntime for gdextension/
+            onnxruntime
             ffmpeg
             git
             curl
@@ -126,10 +127,14 @@
           ];
 
           shellHook = commonHook + ''
-            export ORT_ROOT="${ortC}"
+            export ORT_ROOT="${ortDev}"
+            export ORT_LIB="${ortPkg}/lib"
+            export C_INCLUDE_PATH="${ortDev}/include''${C_INCLUDE_PATH:+:}$C_INCLUDE_PATH"
+            export LIBRARY_PATH="${ortPkg}/lib''${LIBRARY_PATH:+:}$LIBRARY_PATH"
             echo "vizemes-align nix develop .#train"
             echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/torch/torchaudio/onnxruntime"
-            echo "  ORT_ROOT=$ORT_ROOT  # GDExtension: cd gdextension && scons platform=linux target=template_debug"
+            echo "  ORT_ROOT=$ORT_ROOT  ORT_LIB=$ORT_LIB"
+            echo "  GDExtension: cd gdextension && scons platform=linux target=template_debug"
             echo "  godot-cpp: git submodule update --init --recursive"
             echo "  scons smoke-csv  # C CSV parity (no Make)"
             echo "  No .venv. First enter may download ~1GiB from cache.nixos.org (not compile)."
@@ -143,8 +148,9 @@
               exit 1
             fi
             python3 -c 'import torch, onnxruntime as ort; print("  torch", torch.__version__, "cuda", torch.cuda.is_available(), "ort", ort.__version__)'
-            if [ ! -f "$ORT_ROOT/include/onnxruntime_c_api.h" ]; then
-              echo "  WARN: onnxruntime C headers missing under ORT_ROOT" >&2
+            if [ ! -f "$ORT_ROOT/include/onnxruntime_c_api.h" ] && [ ! -f "$ORT_ROOT/include/onnxruntime/onnxruntime_c_api.h" ]; then
+              echo "  ERROR: onnxruntime_c_api.h not under ORT_ROOT=$ORT_ROOT" >&2
+              exit 1
             fi
           '';
         };
