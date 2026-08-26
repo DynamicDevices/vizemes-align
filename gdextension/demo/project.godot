@@ -1,0 +1,14 @@
+; Minimal Godot 4.3 project to exercise VizemesOnnx CSV smoke.
+; Open this folder in Godot after building gdextension/bin/*.so
+config_version=5
+
+[application]
+config/name="VizemesOnnxSmoke"
+run/main_scene="res://csv_smoke.tscn"
+config/features=PackedStringArray("4.3")
+
+[autoload]
+
+[display]
+window/size/viewport_width=800
+window/size/viewport_height=450

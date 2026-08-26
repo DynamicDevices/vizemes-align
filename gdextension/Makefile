@@ -7,7 +7,7 @@
 #   make ORT_ROOT=... smoke
 
 CC ?= gcc
-CFLAGS ?= -std=c11 -Wall -Wextra -O2
+CFLAGS ?= -std=c11 -Wall -Wextra -O2 -fPIC
 INCLUDES = -Iinclude -Ifrontends/mel
 LDFLAGS ?=
 LDLIBS = -lm
