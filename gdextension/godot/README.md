@@ -1,4 +1,4 @@
-# Godot 4 GDExtension (scaffold)
+# Godot 4 GDExtension
 
 Wraps `vizemes_runtime_*` as `VizemesOnnx`:
 
@@ -8,25 +8,25 @@ Wraps `vizemes_runtime_*` as `VizemesOnnx`:
 | `predict(PackedFloat32Array)` | `vizemes_runtime_run_context` |
 | `get_n_visemes` / `get_input_features` | C accessors |
 
-**Status:** sources present; **not built in CI yet**. Needs a checked-out
-[godot-cpp](https://github.com/godotengine/godot-cpp) matching your Godot minor
-(4.2+), plus `ORT_ROOT`, then an SConstruct (or CMake) that links
-`libvizemes_runtime.a` + `libonnxruntime`.
-
-Until that lands, host parity is:
+## Build (Linux x86_64, Godot 4.3)
 
 ```bash
-cd gdextension && make ORT_ROOT=… smoke-csv
+git submodule update --init --recursive   # gdextension/godot-cpp @ 4.3
+# ORT: nix develop .#train, or:
+#   curl -L -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
+#   tar -C /tmp -xzf /tmp/ort.tgz && export ORT_ROOT=/tmp/onnxruntime-linux-x64-1.20.1
+cd gdextension
+make ORT_ROOT="$ORT_ROOT"                 # -fPIC static lib
+pip install scons                         # if needed
+scons platform=linux target=template_debug
+cp bin/libvizemes_onnx.linux.template_debug.x86_64.so demo/bin/
 ```
 
-Same CSV windows / expect↔predict table as `scripts/sanity_check_onnx.py`.
+Open `gdextension/demo/` in Godot 4.3+ and run the main scene — prints the
+CSV expect/argmax table (`GODOT_ONNX_CSV_SMOKE_OK`).
 
-## Intended GDScript smoke (after `.so` exists)
+Host parity without Godot:
 
-```gdscript
-var m := VizemesOnnx.new()
-assert(m.load_model("res://export/ci-smoke/model.json", "res://export/ci-smoke/model.onnx"))
-var ctx := PackedFloat32Array() # 1600 floats from one CSV row
-var w := m.predict(ctx)
-print(w.size(), " ", w[0])
+```bash
+make ORT_ROOT="$ORT_ROOT" smoke-csv
 ```

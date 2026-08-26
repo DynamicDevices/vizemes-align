@@ -10,5 +10,8 @@ __pycache__/
 result
 .direnv/
 gdextension/build/
+gdextension/bin/
+gdextension/demo/bin/*.so
+gdextension/.sconsign.dblite
 export/ci-smoke/demo_row0.f32
 

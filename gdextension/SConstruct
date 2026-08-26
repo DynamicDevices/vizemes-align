@@ -1,0 +1,79 @@
+#!/usr/bin/env python
+"""Build VizemesOnnx GDExtension (.so) against godot-cpp + ORT.
+
+Prereqs:
+  git submodule update --init --recursive   # gdextension/godot-cpp
+  export ORT_ROOT=/path/to/onnxruntime-linux-x64-*
+  cd gdextension && make ORT_ROOT=$ORT_ROOT   # libvizemes_runtime.a
+  scons platform=linux target=template_debug
+
+Output: bin/libvizemes_onnx.linux.template_debug.x86_64.so
+"""
+import os
+import sys
+
+from SCons.Script import ARGUMENTS, Default, Dir, Glob, SConscript
+
+ORT_ROOT = ARGUMENTS.get("ort_root", os.environ.get("ORT_ROOT", ""))
+if not ORT_ROOT or not os.path.isdir(ORT_ROOT):
+    print(
+        "ORT_ROOT / ort_root= must point at an ONNX Runtime prefix (include/ + lib/).\n"
+        "  export ORT_ROOT=/path/to/onnxruntime-linux-x64-*\n"
+        "  scons platform=linux target=template_debug ort_root=$ORT_ROOT",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+godot_cpp = Dir("godot-cpp")
+if not godot_cpp.exists() or not os.listdir(str(godot_cpp.srcnode())):
+    print(
+        "godot-cpp missing. Run:\n"
+        "  git submodule update --init --recursive",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+runtime_a = "build/libvizemes_runtime.a"
+if not os.path.isfile(runtime_a):
+    print(
+        f"Missing {runtime_a}. Build first:\n"
+        f"  make ORT_ROOT={ORT_ROOT}",
+        file=sys.stderr,
+    )
+    sys.exit(1)
+
+env = SConscript("godot-cpp/SConstruct")
+
+env.Append(
+    CPPPATH=[
+        "include",
+        "frontends/mel",
+        "godot",
+        os.path.join(ORT_ROOT, "include"),
+    ],
+    CPPDEFINES=["VIZEMES_WITH_ORT=1"],
+    LIBPATH=["build", os.path.join(ORT_ROOT, "lib")],
+    LIBS=["vizemes_runtime", "onnxruntime", "m"],
+    RPATH=[os.path.join(ORT_ROOT, "lib")],
+)
+
+sources = [
+    "godot/VizemesOnnx.cpp",
+    "godot/register_types.cpp",
+]
+
+libname = "vizemes_onnx"
+if env["platform"] == "macos":
+    library = env.SharedLibrary(
+        "bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
+            libname, env["platform"], env["target"], libname, env["platform"], env["target"]
+        ),
+        source=sources,
+    )
+else:
+    library = env.SharedLibrary(
+        "bin/lib{}{}{}".format(libname, env["suffix"], env.subst("$SHLIBSUFFIX")),
+        source=sources,
+    )
+
+Default(library)
