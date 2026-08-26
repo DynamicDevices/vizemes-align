@@ -104,8 +104,11 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: install numpy + onnxruntime (demo dump + C↔Py cross-check)
-        run: pip install numpy onnxruntime
+      - name: install numpy + onnxruntime + scons (GDExtension build)
+        run: pip install numpy onnxruntime scons
+
+      - name: init godot-cpp submodule
+        run: git submodule update --init --recursive gdextension/godot-cpp
 
       - name: fetch ONNX Runtime CPU (linux-x64)
         run: |
@@ -116,17 +119,18 @@ jobs:
           tar -C /tmp -xzf /tmp/ort.tgz
           echo "ORT_ROOT=/tmp/onnxruntime-linux-x64-${VER}" >> "$GITHUB_ENV"
 
-      - name: make smoke (gdextension + ORT)
+      - name: scons GDExtension + smoke-csv (ORT)
         run: |
           set -euo pipefail
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/demo_inputs.npz
           test -f export/ci-smoke/demo_inputs.csv
           cd gdextension
-          make ORT_ROOT="$ORT_ROOT" smoke
-          make ORT_ROOT="$ORT_ROOT" smoke-csv | tee /tmp/gdext-csv-smoke.txt
-          grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/gdext-csv-smoke.txt
-          grep -q 'hit_rate=' /tmp/gdext-csv-smoke.txt
+          scons platform=linux target=template_debug
+          test -f bin/libvizemes_onnx.linux.template_debug.x86_64.so
+          scons platform=linux target=template_debug smoke-csv
+          grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
+          grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]

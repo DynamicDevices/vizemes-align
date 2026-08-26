@@ -116,14 +116,22 @@
             curl
             steam-run
             gcc
-            gnumake
+            scons
+            cmake
+            ninja
+            pkg-config
+            autoconf
+            automake
+            libtool
           ];
 
           shellHook = commonHook + ''
             export ORT_ROOT="${ortC}"
             echo "vizemes-align nix develop .#train"
             echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/torch/torchaudio/onnxruntime"
-            echo "  ORT_ROOT=$ORT_ROOT  # C lib for: cd gdextension && make smoke"
+            echo "  ORT_ROOT=$ORT_ROOT  # GDExtension: cd gdextension && scons platform=linux target=template_debug"
+            echo "  godot-cpp: git submodule update --init --recursive"
+            echo "  scons smoke-csv  # C CSV parity (no Make)"
             echo "  No .venv. First enter may download ~1GiB from cache.nixos.org (not compile)."
             echo "  ONNX sanity:"
             echo "    python3 scripts/sanity_check_onnx.py export/ci-smoke/model.onnx --subset ci-fixture --limit 1"

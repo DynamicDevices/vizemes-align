@@ -1,25 +1,27 @@
 #!/usr/bin/env python
-"""Build VizemesOnnx GDExtension (.so) against godot-cpp + ORT.
+"""Build VizemesOnnx GDExtension (.so) — scons-only (no Make).
+
+Compiles mel frontend + ORT C runtime + godot-cpp bindings in one pass.
+Host smoke: `scons smoke-csv` (same table as scripts/sanity_check_onnx.py).
 
 Prereqs:
-  git submodule update --init --recursive   # gdextension/godot-cpp
-  export ORT_ROOT=/path/to/onnxruntime-linux-x64-*
-  cd gdextension && make ORT_ROOT=$ORT_ROOT   # libvizemes_runtime.a
-  scons platform=linux target=template_debug
+  git submodule update --init --recursive
+  export ORT_ROOT=...   # nix develop .#train sets this
 
-Output: bin/libvizemes_onnx.linux.template_debug.x86_64.so
+  scons platform=linux target=template_debug
+  scons smoke-csv
 """
 import os
 import sys
 
-from SCons.Script import ARGUMENTS, Default, Dir, Glob, SConscript
+from SCons.Script import ARGUMENTS, Alias, Default, Dir, SConscript
 
 ORT_ROOT = ARGUMENTS.get("ort_root", os.environ.get("ORT_ROOT", ""))
 if not ORT_ROOT or not os.path.isdir(ORT_ROOT):
     print(
         "ORT_ROOT / ort_root= must point at an ONNX Runtime prefix (include/ + lib/).\n"
-        "  export ORT_ROOT=/path/to/onnxruntime-linux-x64-*\n"
-        "  scons platform=linux target=template_debug ort_root=$ORT_ROOT",
+        "  nix develop .#train   # sets ORT_ROOT\n"
+        "  scons platform=linux target=template_debug",
         file=sys.stderr,
     )
     sys.exit(1)
@@ -33,34 +35,38 @@ if not godot_cpp.exists() or not os.listdir(str(godot_cpp.srcnode())):
     )
     sys.exit(1)
 
-runtime_a = "build/libvizemes_runtime.a"
-if not os.path.isfile(runtime_a):
-    print(
-        f"Missing {runtime_a}. Build first:\n"
-        f"  make ORT_ROOT={ORT_ROOT}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
-
 env = SConscript("godot-cpp/SConstruct")
+
+ort_lib = os.path.join(ORT_ROOT, "lib")
+ort_inc = os.path.join(ORT_ROOT, "include")
+
+runtime_c_sources = [
+    "frontends/mel/mel_spectrogram.c",
+    "src/mel_frontend.c",
+    "src/viseme_runtime.c",
+    "src/sidecar_json.c",
+]
+
+godot_sources = [
+    "godot/VizemesOnnx.cpp",
+    "godot/register_types.cpp",
+]
 
 env.Append(
     CPPPATH=[
         "include",
         "frontends/mel",
         "godot",
-        os.path.join(ORT_ROOT, "include"),
+        ort_inc,
     ],
-    CPPDEFINES=["VIZEMES_WITH_ORT=1"],
-    LIBPATH=["build", os.path.join(ORT_ROOT, "lib")],
-    LIBS=["vizemes_runtime", "onnxruntime", "m"],
-    RPATH=[os.path.join(ORT_ROOT, "lib")],
+    CPPDEFINES={"VIZEMES_WITH_ORT": 1},
+    CCFLAGS=["-std=c11", "-Wall", "-Wextra", "-fPIC"],
+    LIBPATH=[ort_lib],
+    LIBS=["onnxruntime", "m"],
+    LINKFLAGS=[f"-Wl,-rpath,{ort_lib}"],
 )
 
-sources = [
-    "godot/VizemesOnnx.cpp",
-    "godot/register_types.cpp",
-]
+runtime_lib = env.StaticLibrary("build/libvizemes_runtime", runtime_c_sources)
 
 libname = "vizemes_onnx"
 if env["platform"] == "macos":
@@ -68,12 +74,35 @@ if env["platform"] == "macos":
         "bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
             libname, env["platform"], env["target"], libname, env["platform"], env["target"]
         ),
-        source=sources,
+        source=godot_sources,
+        LIBS=[runtime_lib, "onnxruntime", "m"],
     )
 else:
     library = env.SharedLibrary(
         "bin/lib{}{}{}".format(libname, env["suffix"], env.subst("$SHLIBSUFFIX")),
-        source=sources,
+        source=godot_sources,
+        LIBS=[runtime_lib, "onnxruntime", "m"],
     )
 
+smoke_csv = env.Program(
+    "build/smoke_csv",
+    "tools/smoke_csv.c",
+    LIBS=[runtime_lib, "onnxruntime", "m"],
+)
+
+smoke_context = env.Program(
+    "build/smoke_context",
+    "tools/smoke_context.c",
+    LIBS=[runtime_lib, "onnxruntime", "m"],
+)
+
+csv_path = "../export/ci-smoke/demo_inputs.csv"
+smoke_csv_run = env.Command(
+    "build/smoke_csv.stamp",
+    [smoke_csv, csv_path],
+    f"./build/smoke_csv ../export/ci-smoke/model.json ../export/ci-smoke/model.onnx {csv_path} "
+    "| tee /tmp/vizemes-smoke-csv.txt && grep -q GDEXT_ORT_CSV_SMOKE_OK /tmp/vizemes-smoke-csv.txt",
+)
+
+Alias("smoke-csv", smoke_csv_run)
 Default(library)
