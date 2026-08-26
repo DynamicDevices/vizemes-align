@@ -28,6 +28,6 @@ Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader repo.
 
 ## Note
 
-`gdextension/demo/` still exercises **VizemesOnnx** (bundled ORT runtime). Once
-the shared loader is validated, bespoke ORT code will move out of the audio
-GDExtension.
+VizemesOnnx (bespoke ORT GDExtension under `gdextension/`) has been removed;
+Godot inference uses the shared loader only. Host C smokes (`make smoke-csv`)
+remain for mel/ORT parity during frontend work.

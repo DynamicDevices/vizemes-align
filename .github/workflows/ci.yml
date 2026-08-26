@@ -94,8 +94,8 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # C runtime + ORT (ubuntu; release tarball — mirrors non-Nix laptop proof).
-  gdext-ort:
+  # Shared OnnxLoader (godot-onnx-loader) + host C runtime Makefile smokes.
+  inference-smoke:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -104,11 +104,8 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: install numpy + onnxruntime + scons (GDExtension build)
-        run: pip install numpy onnxruntime scons
-
-      - name: init godot-cpp submodule
-        run: git submodule update --init --recursive gdextension/godot-cpp
+      - name: install scons
+        run: pip install scons
 
       - name: fetch ONNX Runtime CPU (linux-x64)
         run: |
@@ -118,17 +115,32 @@ jobs:
             "https://github.com/microsoft/onnxruntime/releases/download/v${VER}/onnxruntime-linux-x64-${VER}.tgz"
           tar -C /tmp -xzf /tmp/ort.tgz
           echo "ORT_ROOT=/tmp/onnxruntime-linux-x64-${VER}" >> "$GITHUB_ENV"
+          echo "ORT_LIB=/tmp/onnxruntime-linux-x64-${VER}/lib" >> "$GITHUB_ENV"
 
-      - name: scons GDExtension + smoke-csv (ORT)
+      - name: checkout godot-onnx-loader
+        run: |
+          set -euo pipefail
+          git clone --depth 1 --recurse-submodules \
+            https://github.com/DynamicDevices/godot-onnx-loader.git /tmp/godot-onnx-loader
+
+      - name: godot-onnx-loader scons smoke-csv
+        run: |
+          set -euo pipefail
+          export LIBRARY_PATH="${ORT_LIB}${LIBRARY_PATH:+:$LIBRARY_PATH}"
+          cd /tmp/godot-onnx-loader
+          scons platform=linux target=template_debug
+          test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
+          scons platform=linux target=template_debug smoke-csv
+          grep -q 'ONNX_LOADER_CSV_SMOKE_OK' /tmp/onnx-loader-smoke-csv.txt
+          grep -q 'hit_rate=' /tmp/onnx-loader-smoke-csv.txt
+
+      - name: gdextension host make smoke-csv (C mel + ORT, no Godot .so)
         run: |
           set -euo pipefail
           test -f export/ci-smoke/model.onnx
-          test -f export/ci-smoke/demo_inputs.npz
           test -f export/ci-smoke/demo_inputs.csv
           cd gdextension
-          scons platform=linux target=template_debug
-          test -f bin/libvizemes_onnx.linux.template_debug.x86_64.so
-          scons platform=linux target=template_debug smoke-csv
+          make ORT_ROOT="$ORT_ROOT" smoke-csv | tee /tmp/vizemes-smoke-csv.txt
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 

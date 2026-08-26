@@ -1,9 +1,8 @@
-# Godot GDExtension (in progress)
+# C audio runtime + Godot inference via shared loader
 
-**Status:** C runtime + mel frontend + **ORT** when `ORT_ROOT` is set.
-Host smokes: `make smoke` / `make smoke-csv`. Godot 4.3 GDExtension:
-`scons` → `bin/libvizemes_onnx.*.so` + `demo/` CSV scene (needs Godot editor
-to run; host has no Godot binary).
+**Status:** Host C runtime (mel frontend + ORT when `ORT_ROOT` set). **Godot
+inference** uses the shared [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader)
+addon — not a bespoke ORT GDExtension in this repo.
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
 Waveform→features stays swappable (mel, LPC, …). Each exported ONNX keeps its
@@ -14,33 +13,29 @@ own sidecar contract (`export/ci-smoke/model.json`).
 | Path | Role |
 |------|------|
 | `include/feature_frontend.h` | Pluggable frontend ops |
-| `include/viseme_runtime.h` | PCM → viseme weights (Godot-facing SoT) |
+| `include/viseme_runtime.h` | PCM → viseme weights (C API) |
 | `include/sidecar_json.h` | Tiny `model.json` reader (no cJSON) |
 | `frontends/mel/` | First impl (vendored mel C + ORIGIN.md) |
 | `src/mel_frontend.c` | Mel → `VizemesFrontendOps` |
-| `src/viseme_runtime.c` | ORT-backed runtime (`ORT_ROOT` required) |
+| `src/viseme_runtime.c` | Host ORT runtime (`ORT_ROOT` required) |
 | `src/viseme_runtime_stub.c` | API stub when built without ORT |
 | `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |
 | `tools/smoke_csv.c` | Host smoke: all `demo_inputs.csv` rows (≡ Python table) |
-| `godot/` | `VizemesOnnx` GDExtension sources |
-| `SConstruct` | Builds `bin/libvizemes_onnx.*.so` via godot-cpp |
-| `demo/` | Minimal Godot 4.3 project (CSV smoke scene) |
-| `../godot-demo/` | Dev project using **shared** [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader) addon (symlink) |
-| `godot-cpp/` | Submodule (branch 4.3) |
+| `../godot-demo/` | Godot 4.3 dev project — **OnnxLoader** addon (symlink) + CSV smoke |
 | `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |
+
+Removed: `VizemesOnnx` GDExtension (`godot/`, `SConstruct`, `demo/`). ONNX in
+Godot is delegated to **godot-onnx-loader**; this tree keeps the audio/mel C
+path for host smokes and future PCM→context work.
 
 ## Target Godot shape ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync))
 
 Demo drives Ready Player Me blendshapes via `VisemeSystem.set_visemes(vv)` with
-OVR-style names (`sil`, `PP`, …, `U`, optional `LA`). Today that comes from
-OVRLipSync through two-voip. Our runtime should emit the same kind of float
-weight vector so the avatar path can stay.
+OVR-style names (`sil`, `PP`, …, `U`, optional `LA`). Smoke MLP: 15 classes;
+map `silence`↔`sil`, `ih`/`oh`/`ou`↔`I`/`O`/`U` as needed.
 
-Smoke MLP: 15 classes (see `export/ci-smoke/model.json`); map `silence`↔`sil`,
-`ih`/`oh`/`ou`↔`I`/`O`/`U` as needed. No laughter channel yet.
-
-## Host build
+## Host build (C runtime)
 
 ```bash
 cd gdextension
@@ -53,26 +48,17 @@ nix develop .#train --command bash -c 'cd gdextension && make smoke && make smok
 #   make ORT_ROOT=/tmp/onnxruntime-linux-x64-1.20.1 smoke smoke-csv
 ```
 
-`make` uses `-fPIC` so `libvizemes_runtime.a` can link into the Godot `.so`.
+## Godot (shared OnnxLoader)
 
-## Godot GDExtension (.so) — scons only
-
-See [godot/README.md](godot/README.md). Short form:
+See [`../godot-demo/README.md`](../godot-demo/README.md):
 
 ```bash
-git submodule update --init --recursive
-nix develop .#train
-cd gdextension
-scons platform=linux target=template_debug
-cp bin/libvizemes_onnx.linux.template_debug.x86_64.so demo/bin/
-# Open demo/ in Godot 4.3+
+git clone --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git
+cd godot-onnx-loader && nix develop && scons platform=linux target=template_debug
+# Open vizemes-align/godot-demo/ in Godot 4.3 → csv_smoke.tscn → GODOT_ONNX_CSV_SMOKE_OK
 ```
 
-Host smoke (Makefile legacy for row-0 only; prefer scons):
-
-```bash
-scons smoke-csv
-```
+Host CSV parity (no Godot): `scons smoke-csv` in **godot-onnx-loader**.
 
 ## Generate a fresh smoke ONNX
 
