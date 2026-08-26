@@ -25,6 +25,7 @@ own sidecar contract (`export/ci-smoke/model.json`).
 | `godot/` | `VizemesOnnx` GDExtension sources |
 | `SConstruct` | Builds `bin/libvizemes_onnx.*.so` via godot-cpp |
 | `demo/` | Minimal Godot 4.3 project (CSV smoke scene) |
+| `../godot-demo/` | Dev project using **shared** [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader) addon (symlink) |
 | `godot-cpp/` | Submodule (branch 4.3) |
 | `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |

@@ -1,0 +1,11 @@
+; Vizemes dev project — shared OnnxLoader addon (symlink) + ci-smoke fixture.
+config_version=5
+
+[application]
+config/name="VizemesOnnxLoaderDev"
+run/main_scene="res://csv_smoke.tscn"
+config/features=PackedStringArray("4.3")
+
+[display]
+window/size/viewport_width=800
+window/size/viewport_height=450
