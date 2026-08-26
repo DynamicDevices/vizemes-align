@@ -1,8 +1,9 @@
 # Godot GDExtension (in progress)
 
-**Status:** C runtime + mel frontend. **ORT link** when `ORT_ROOT` is set
-(nix `.#train` or official release tarball). Still **not** a loadable
-`.gdextension` (godot-cpp next).
+**Status:** C runtime + mel frontend + **ORT** when `ORT_ROOT` is set
+(nix `.#train` or official release tarball). Host smokes: `make smoke`
+(row 0) and `make smoke-csv` (all CSV windows ≡ Python). GDExtension
+sources under `godot/` — **not** loadable until godot-cpp build is wired.
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
 Waveform→features stays swappable (mel, LPC, …). Each exported ONNX keeps its
@@ -19,7 +20,9 @@ own sidecar contract (`export/ci-smoke/model.json`).
 | `src/mel_frontend.c` | Mel → `VizemesFrontendOps` |
 | `src/viseme_runtime.c` | ORT-backed runtime (`ORT_ROOT` required) |
 | `src/viseme_runtime_stub.c` | API stub when built without ORT |
-| `tools/smoke_context.c` | Host smoke: flat mel context → softmax |
+| `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |
+| `tools/smoke_csv.c` | Host smoke: all `demo_inputs.csv` rows (≡ Python table) |
+| `godot/` | GDExtension scaffold (`VizemesOnnx.load_model` / `predict`) |
 | `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |
 
@@ -49,10 +52,19 @@ nix develop .#train --command bash -c 'cd gdextension && make smoke'
 `make smoke` dumps `demo_inputs.npz` row 0 → `demo_row0.f32`, runs
 `smoke_context`, checks argmax vs label.
 
+## CSV parity (C ↔ Python)
+
+Same windows as `scripts/sanity_check_onnx.py`:
+
+```bash
+nix develop .#train --command bash -c 'cd gdextension && make smoke-csv'
+```
+
 ## Next
 
-1. godot-cpp GDExtension node: push mic/PCM chunks → `PackedFloat32Array` weights.
+1. godot-cpp GDExtension node: `load_model(json, onnx)` + `predict(PackedFloat32Array)` (see `godot/`).
 2. Drop into a lipsync-style scene calling `set_visemes`.
+3. Push mic/PCM via `vizemes_runtime_push_pcm`.
 
 Python path (unchanged):
 

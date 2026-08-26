@@ -121,8 +121,12 @@ jobs:
           set -euo pipefail
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/demo_inputs.npz
+          test -f export/ci-smoke/demo_inputs.csv
           cd gdextension
           make ORT_ROOT="$ORT_ROOT" smoke
+          make ORT_ROOT="$ORT_ROOT" smoke-csv | tee /tmp/gdext-csv-smoke.txt
+          grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/gdext-csv-smoke.txt
+          grep -q 'hit_rate=' /tmp/gdext-csv-smoke.txt
 
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
