@@ -128,11 +128,16 @@ jobs:
           set -euo pipefail
           export LIBRARY_PATH="${ORT_LIB}${LIBRARY_PATH:+:$LIBRARY_PATH}"
           cd /tmp/godot-onnx-loader
+          git fetch --depth 1 origin main
+          git checkout FETCH_HEAD
           scons platform=linux target=template_debug
           test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
+          test -f addons/onnx_loader/bin/libonnxruntime.so.1
           scons platform=linux target=template_debug smoke-csv
+          scons platform=linux target=template_debug smoke-dlopen-ort
           grep -q 'ONNX_LOADER_CSV_SMOKE_OK' /tmp/onnx-loader-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/onnx-loader-smoke-csv.txt
+          grep -q 'ONNX_DLOPEN_TEARDOWN_OK' /tmp/onnx-loader-smoke-dlopen.txt
 
       - name: gdextension host make smoke-csv (C mel + ORT, no Godot .so)
         run: |
@@ -175,6 +180,7 @@ jobs:
           git clone --depth 1 --recurse-submodules \
             https://github.com/DynamicDevices/godot-onnx-loader.git /var/tmp/godot-onnx-loader-ci
           cd /var/tmp/godot-onnx-loader-ci
+          rm -rf addons/onnx_loader/bin/libonnxruntime.so*
           nix develop --command bash -c '
             set -euo pipefail
             scons platform=linux target=template_debug
