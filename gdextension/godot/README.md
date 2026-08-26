@@ -12,13 +12,10 @@ Wraps `vizemes_runtime_*` as `VizemesOnnx`:
 
 ```bash
 git submodule update --init --recursive   # gdextension/godot-cpp @ 4.3
-# ORT: nix develop .#train, or:
-#   curl -L -o /tmp/ort.tgz https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-1.20.1.tgz
-#   tar -C /tmp -xzf /tmp/ort.tgz && export ORT_ROOT=/tmp/onnxruntime-linux-x64-1.20.1
+nix develop .#train                       # ORT_ROOT + scons/cmake/ninja/autotools
 cd gdextension
-make ORT_ROOT="$ORT_ROOT"                 # -fPIC static lib
-pip install scons                         # if needed
 scons platform=linux target=template_debug
+scons smoke-csv                           # optional: CSV parity table
 cp bin/libvizemes_onnx.linux.template_debug.x86_64.so demo/bin/
 ```
 
@@ -28,5 +25,9 @@ CSV expect/argmax table (`GODOT_ONNX_CSV_SMOKE_OK`).
 Host parity without Godot:
 
 ```bash
-make ORT_ROOT="$ORT_ROOT" smoke-csv
+scons smoke-csv
 ```
+
+Multi-platform layout follows patterns from
+[godot_debug_draw_3d](https://github.com/DmitriySalnikov/godot_debug_draw_3d/blob/master/SConstruct)
+(next step).

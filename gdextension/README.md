@@ -54,17 +54,23 @@ nix develop .#train --command bash -c 'cd gdextension && make smoke && make smok
 
 `make` uses `-fPIC` so `libvizemes_runtime.a` can link into the Godot `.so`.
 
-## Godot GDExtension (.so)
+## Godot GDExtension (.so) — scons only
 
 See [godot/README.md](godot/README.md). Short form:
 
 ```bash
 git submodule update --init --recursive
+nix develop .#train
 cd gdextension
-make ORT_ROOT="$ORT_ROOT"
 scons platform=linux target=template_debug
 cp bin/libvizemes_onnx.linux.template_debug.x86_64.so demo/bin/
 # Open demo/ in Godot 4.3+
+```
+
+Host smoke (Makefile legacy for row-0 only; prefer scons):
+
+```bash
+scons smoke-csv
 ```
 
 ## Generate a fresh smoke ONNX
