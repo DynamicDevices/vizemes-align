@@ -11,8 +11,9 @@ result
 .direnv/
 gdextension/build/
 gdextension/bin/
-gdextension/demo/bin/*.so
+gdextension/demo/bin/
 gdextension/.sconsign.dblite
 gdextension/godot/*.os
+godot-demo/.godot/
 export/ci-smoke/demo_row0.f32
 
