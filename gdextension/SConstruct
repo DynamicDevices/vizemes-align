@@ -16,6 +16,21 @@ import sys
 
 from SCons.Script import ARGUMENTS, Alias, Default, Dir, SConscript
 
+
+def _find_ort_header(root):
+    """Return (include_dir, lib_dir) for ONNX Runtime under root or ORT_LIB."""
+    lib = os.environ.get("ORT_LIB", os.path.join(root, "lib"))
+    inc_candidates = [
+        os.path.join(root, "include"),
+        os.path.join(root, "include", "onnxruntime"),
+        os.path.join(root, "include", "onnxruntime", "core", "session"),
+    ]
+    for inc in inc_candidates:
+        if os.path.isfile(os.path.join(inc, "onnxruntime_c_api.h")):
+            return inc, lib
+    return inc_candidates[0], lib
+
+
 ORT_ROOT = ARGUMENTS.get("ort_root", os.environ.get("ORT_ROOT", ""))
 if not ORT_ROOT or not os.path.isdir(ORT_ROOT):
     print(
@@ -37,8 +52,15 @@ if not godot_cpp.exists() or not os.listdir(str(godot_cpp.srcnode())):
 
 env = SConscript("godot-cpp/SConstruct")
 
-ort_lib = os.path.join(ORT_ROOT, "lib")
-ort_inc = os.path.join(ORT_ROOT, "include")
+ort_inc, ort_lib = _find_ort_header(ORT_ROOT)
+if not os.path.isfile(os.path.join(ort_inc, "onnxruntime_c_api.h")):
+    print(
+        f"ERROR: onnxruntime_c_api.h not found (ORT_ROOT={ORT_ROOT}, tried {ort_inc}).\n"
+        "  Use: nix develop .#train   (not plain nix develop)\n"
+        "  Check: ls $ORT_ROOT/include/onnxruntime_c_api.h",
+        file=sys.stderr,
+    )
+    sys.exit(1)
 
 runtime_c_sources = [
     "frontends/mel/mel_spectrogram.c",
