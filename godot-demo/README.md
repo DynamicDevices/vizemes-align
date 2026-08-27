@@ -39,6 +39,7 @@ path (`bash tools/godot_46_ms_ort.sh`) or a stock 4.6 editor binary.
 | `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → VisemeSystem or Stub) |
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
 | `seek_probe.tscn` | `GODOT_SEEK_PROBE_OK` — seek times vs alignment; mel L2 vs training path (editor OK) |
+| `viseme_timeline.tscn` | Overlay plot: 15 ONNX weight curves + MFA/trained viseme boxes (editor F6) |
 | `mic_lipsync.tscn` | Live mic GUI demo (not headless) — `AudioStreamMicrophone` → streaming mel → visemes |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
@@ -96,6 +97,18 @@ python3 scripts/export_seek_probe.py --subset test-clean --stem <utt_id> --seeks
 ```
 
 Headless marker: `GODOT_SEEK_PROBE_OK` (also run by `godot_mel_smoke.sh`).
+
+### Viseme timeline (`viseme_timeline.tscn`) — editor plot
+
+Julian’s at-a-glance view: 15 coloured ONNX softmax curves vs time, with MFA phones
+collapsed to trained viseme **boxes** on the same axis.
+
+```bash
+python3 scripts/export_viseme_timeline.py --subset ci-fixture
+# later: --subset test-clean --stem <utt_id>   # aim for ~10s clips
+```
+
+Open `viseme_timeline.tscn` and run (F6). Marker: `GODOT_VISEME_TIMELINE_OK`.
 
 ### Live mic (`mic_lipsync.tscn`)
 

@@ -17,6 +17,12 @@ Julian/Alex forum topic **vizemes** (thread 165) on `alex-julian-briar`.
 **Soft stop only:** hooks must not block Alex's prompts (`continue:false`).
 Triage nudges are advisory; Alex can always submit skip/move-on.
 
+**Idle wake (safer):** `vizemes-telegram-inbox-flag.sh` on `stop` may emit one
+`followup_message` when `NEED_REPLY` (status=completed, loop_count=0, mid-set
+dedupe + cooldown). **Do not** arm `composer-listen-supervise` /
+`notify_on_output` — that caused Cursor **Error resuming chat**. Disable wake:
+`touch ~/.local/share/vizemes-telegram/inbox-flag.off`.
+
 **Fail-open (missing carryon):** if `~/.local/share/vizemes-carryon/` or `msg-*.txt` is
 absent, one quick `ls` only — report the gap and stop. No recursive `find`.
 
@@ -24,9 +30,8 @@ absent, one quick `ls` only — report the gap and stop. No recursive `find`.
 His explicit prompt wins; YubiKey present is acceptable presence validation.
 Patterns: `alex-prompt-never-block`, `triage-infra-fail-open`, `vizemes-stale-triage-resume`.
 
-**Duty = hooks only:** sessionStart/stop inject `TRIAGE_REQUIRED` when mail waits.
-**Do not** arm `composer-listen-supervise` / `notify_on_output` — that caused Cursor
-**Error resuming chat**. **Always `mark_handled.py`** after replying.
+**Duty:** sessionStart catchup + stop safer followup + turn_start_triage on prompts.
+**Always `mark_handled.py`** after replying.
 
 **Plain language:** Julian/Alex group replies — engineering prose, not bullet dumps.
 
