@@ -18,9 +18,17 @@ if [[ -z "$GODOT" || ! -x "$GODOT" ]]; then
 	done
 fi
 EXT_LIST="$ROOT/.godot/extension_list.cfg"
+MEL_SO="$ROOT/../gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so"
 
 if [[ ! -x "$GODOT" ]]; then
 	echo "GODOT_BIN must point at Godot 4.x (try: nix develop ../godot-onnx-loader --command bash godot-demo/tools/godot_mel_smoke.sh)" >&2
+	exit 1
+fi
+
+if [[ ! -f "$MEL_SO" ]]; then
+	echo "MelFrontend .so missing: $MEL_SO" >&2
+	echo "Rebuild: nix develop .#train --command bash -c 'cd gdextension && scons platform=linux target=template_debug'" >&2
+	echo "Or run: bash godot-demo/tools/julian_vizemes_smoke.sh" >&2
 	exit 1
 fi
 

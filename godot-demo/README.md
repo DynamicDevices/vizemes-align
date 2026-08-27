@@ -42,6 +42,12 @@ Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` 
 
 Headless Godot (both GDExtensions): `bash godot-demo/tools/godot_mel_smoke.sh`
 
+**Julian Nix one-liner** (builds MelFrontend + OnnxLoader, then smokes):
+
+```bash
+bash godot-demo/tools/julian_vizemes_smoke.sh
+```
+
 NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
 
 ### Live mic (`mic_lipsync.tscn`)
