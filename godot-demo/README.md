@@ -36,6 +36,7 @@ Open `godot-demo/`:
 | `mel_smoke.tscn` | `GODOT_MEL_ONNX_SMOKE_OK` + `hit_rate=` (wav → mel → ONNX vs demo_inputs) |
 | `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → `VisemeSystemStub.set_visemes`) |
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
+| `seek_probe.tscn` | `GODOT_SEEK_PROBE_OK` — seek times vs alignment; mel L2 vs training path (editor OK) |
 | `mic_lipsync.tscn` | Live mic GUI demo (not headless) — `AudioStreamMicrophone` → streaming mel → visemes |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
@@ -49,6 +50,24 @@ bash godot-demo/tools/julian_vizemes_smoke.sh
 ```
 
 NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
+
+### Seek probe (`seek_probe.tscn`) — editor-friendly
+
+Open `seek_probe.tscn` in Godot and run (F6). Output panel shows for each seek:
+
+- expected viseme (from MFA alignment / training labels)
+- got viseme (ONNX argmax)
+- mel L2 vs the training-path context (`mel_features_c` → causal window)
+
+Regenerate the probe JSON (ci-fixture by default; use a LibriSpeech clip when aligned):
+
+```bash
+python3 scripts/export_seek_probe.py --subset ci-fixture
+# later, with MFA done:
+python3 scripts/export_seek_probe.py --subset test-clean --stem <utt_id> --seeks 8
+```
+
+Headless marker: `GODOT_SEEK_PROBE_OK` (also run by `godot_mel_smoke.sh`).
 
 ### Live mic (`mic_lipsync.tscn`)
 
