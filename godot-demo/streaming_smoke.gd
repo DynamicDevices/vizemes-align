@@ -26,6 +26,7 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
+	mel.begin_stream()
 	var stream_ctx: Array = []
 	var pos := 0
 	while pos < pcm.size():
@@ -47,6 +48,10 @@ func _ready() -> void:
 		return
 
 	var batch_ctx: Array = mel.build_utterance_contexts(pcm)
+	if stream_ctx.size() != batch_ctx.size():
+		push_error("streaming/batch context count mismatch %d vs %d" % [stream_ctx.size(), batch_ctx.size()])
+		get_tree().quit(1)
+		return
 	print(
 		"streaming_contexts=%d batch_contexts=%d logits=%d" % [
 			stream_ctx.size(), batch_ctx.size(), logits.size()

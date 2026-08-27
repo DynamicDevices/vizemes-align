@@ -17,20 +17,13 @@ class MelFrontend : public RefCounted {
 	const VizemesFrontendOps *ops = nullptr;
 	VizemesModelMeta meta{};
 	bool configured = false;
-	float *mel_ring = nullptr;
-	int mel_filled = 0;
-	float *pcm_pending = nullptr;
-	int pcm_pending_n = 0;
-	int pcm_pending_cap = 0;
-	float *norm_sum = nullptr;
-	float *norm_sum2 = nullptr;
-	int norm_count = 0;
+	float *stream_pcm = nullptr;
+	size_t stream_pcm_n = 0;
+	size_t stream_pcm_cap = 0;
+	size_t stream_contexts_emitted = 0;
 
-	void clear_buffers();
-	void clear_norm_stats();
-	void normalize_frame_causal(float *mel_frame);
-	void ring_push(const float *mel_frame);
-	PackedFloat32Array build_flat_context() const;
+	void clear_stream();
+	Array contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const;
 
 protected:
 	static void _bind_methods();
@@ -41,11 +34,13 @@ public:
 
 	bool configure_from_json(const String &model_json_path);
 	void reset();
+	/** Clear streaming PCM buffer (keep configure/model). */
+	void begin_stream();
 
 	PackedFloat32Array push_pcm(const PackedFloat32Array &pcm);
-	/** Streaming chunks (causal normalize; mel padding differs from batch train path). */
+	/** Append PCM; emit new contexts via batch mel (matches train path). */
 	Array push_pcm_contexts(const PackedFloat32Array &pcm);
-	/** Full utterance: batch mel + per-utterance normalize (matches train path). */
+	/** One-shot full utterance (same mel path as push_pcm over whole buffer). */
 	Array build_utterance_contexts(const PackedFloat32Array &pcm);
 
 	int get_input_features() const;
