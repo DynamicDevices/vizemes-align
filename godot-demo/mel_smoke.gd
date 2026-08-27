@@ -1,5 +1,7 @@
 extends Node
-## MelFrontend + OnnxLoader end-to-end: ci-fixture.wav → mel context → viseme logits.
+## MelFrontend + OnnxLoader end-to-end: ci-fixture.wav → mel contexts → viseme logits.
+
+const CHUNK := 1600  # ~100 ms @ 16 kHz — mic-sized chunks
 
 
 func _softmax(logits: PackedFloat32Array) -> PackedFloat32Array:
@@ -108,21 +110,32 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	var ctx: PackedFloat32Array = mel.push_pcm(pcm)
-	if ctx.is_empty():
-		push_error("no mel context from ci-fixture.wav")
+	var contexts := 0
+	var off := 0
+	while off < pcm.size():
+		var end := mini(off + CHUNK, pcm.size())
+		var chunk := pcm.slice(off, end)
+		off = end
+		var batch: Array = mel.push_pcm_contexts(chunk)
+		for ctx_variant in batch:
+			var ctx: PackedFloat32Array = ctx_variant
+			if ctx.size() != mel.get_input_features():
+				push_error("bad context size %d" % ctx.size())
+				get_tree().quit(1)
+				return
+			var logits: PackedFloat32Array = loader.predict(ctx)
+			if logits.is_empty():
+				push_error("predict failed at context %d" % contexts)
+				get_tree().quit(1)
+				return
+			var _w := _softmax(logits)
+			contexts += 1
+
+	if contexts <= 0:
+		push_error("no mel contexts from ci-fixture.wav")
 		get_tree().quit(1)
 		return
-	if ctx.size() != mel.get_input_features():
-		push_error("bad context size %d" % ctx.size())
-		get_tree().quit(1)
-		return
-	var logits: PackedFloat32Array = loader.predict(ctx)
-	if logits.is_empty():
-		push_error("predict failed")
-		get_tree().quit(1)
-		return
-	var _w := _softmax(logits)
-	print("mel_context_features=%d logits=%d" % [ctx.size(), logits.size()])
+
+	print("mel_contexts=%d logits=%d" % [contexts, loader.get_output_size()])
 	print("GODOT_MEL_ONNX_SMOKE_OK")
 	get_tree().quit(0)
