@@ -181,6 +181,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
+          # Need merge-base with PR base for path detect (shallow = false green skip).
+          fetch-depth: 0
 
       - name: Detect MelFrontend / Godot smoke changes
         id: mel
@@ -188,9 +190,15 @@ jobs:
           set -euo pipefail
           RUN=1
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
-            if ! git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD | grep -qE \
-              '^(gdextension/|godot-demo/|flake\.nix|\.github/workflows/ci\.yml)'; then
-              RUN=0
+            BASE="${{ github.event.pull_request.base.sha }}"
+            if changed="$(git diff --name-only "${BASE}...HEAD" 2>/dev/null)"; then
+              if ! echo "$changed" | grep -qE \
+                '^(gdextension/|godot-demo/|flake\.nix|\.github/workflows/ci\.yml)'; then
+                RUN=0
+              fi
+            else
+              echo "path detect failed (no merge base?); forcing nixos mel smoke"
+              RUN=1
             fi
           fi
           echo "run=$RUN" >> "$GITHUB_OUTPUT"
@@ -210,10 +218,12 @@ jobs:
             test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
 
-      - name: Godot mel+lipsync smoke (NixOS)
+      - name: Godot mel+lipsync smoke (NixOS, Godot 4.6 MS-ORT)
         if: steps.mel.outputs.run == '1'
         run: |
           set -euo pipefail
+          # Same gate Julian hit: bare `nix develop` GODOT_BIN is still 4.5.1.
+          # Use godot_46_ms_ort + nixos-26.05 godot_4_6 (see julian_vizemes_smoke.sh).
           mkdir -p "$ONNX_LOADER_SCONS_CACHE"
           if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
             git clone --depth 1 --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
@@ -226,13 +236,16 @@ jobs:
           test -f gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/ci-fixture.wav
-          nix develop "$ONNX_LOADER_ROOT" --command bash -c '
+          export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
+          (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_ms_ort.sh)
+          NIXPKGS="${NIXPKGS:-github:nixos/nixpkgs/nixos-26.05}"
+          nix shell "${NIXPKGS}#godot_4_6" --command bash -c '
             set -euo pipefail
-            export SCONS_CACHE='"$ONNX_LOADER_SCONS_CACHE"'
-            cd '"$ONNX_LOADER_ROOT"'
-            rm -f addons/onnx_loader/bin/libonnxruntime.so*
-            scons -j"$(nproc)" platform=linux target=template_debug smoke-dlopen-ort
-            test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
-            cd '"$GITHUB_WORKSPACE"'
+            G=$(command -v godot4 || command -v godot || true)
+            test -n "$G" && test -x "$G"
+            export GODOT_BIN="$G"
+            unset ONNX_ORT_BIN
+            export ONNX_LOADER_SKIP_SESSION_RELEASE=1
+            cd "'"$GITHUB_WORKSPACE"'"
             bash godot-demo/tools/godot_mel_smoke.sh
           '
