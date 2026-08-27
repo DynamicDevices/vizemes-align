@@ -36,12 +36,19 @@ Open `godot-demo/`:
 | `mel_smoke.tscn` | `GODOT_MEL_ONNX_SMOKE_OK` + `hit_rate=` (wav → mel → ONNX vs demo_inputs) |
 | `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → `VisemeSystemStub.set_visemes`) |
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
+| `mic_lipsync.tscn` | Live mic GUI demo (not headless) — `AudioStreamMicrophone` → streaming mel → visemes |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
 
 Headless Godot (both GDExtensions): `bash godot-demo/tools/godot_mel_smoke.sh`
 
 NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
+
+### Live mic (`mic_lipsync.tscn`)
+
+Open in Godot (not headless): captures mic via `AudioEffectCapture`, resamples to 16 kHz,
+feeds `push_pcm_contexts`, drives `VisemeSystemStub`. Swap stub for goatchurchprime/lipsync
+`VisemeSystem` in production.
 
 ## Note
 
