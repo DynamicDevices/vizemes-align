@@ -128,11 +128,18 @@ jobs:
           set -euo pipefail
           export LIBRARY_PATH="${ORT_LIB}${LIBRARY_PATH:+:$LIBRARY_PATH}"
           cd /tmp/godot-onnx-loader
+          git fetch --depth 1 origin main
+          git checkout FETCH_HEAD
           scons platform=linux target=template_debug
           test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
+          test -f addons/onnx_loader/bin/libonnxruntime.so.1
+          ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q libonnxruntime
+          ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q 'libstdc++'
           scons platform=linux target=template_debug smoke-csv
+          scons platform=linux target=template_debug smoke-dlopen-ort
           grep -q 'ONNX_LOADER_CSV_SMOKE_OK' /tmp/onnx-loader-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/onnx-loader-smoke-csv.txt
+          grep -q 'ONNX_DLOPEN_TEARDOWN_OK' /tmp/onnx-loader-smoke-dlopen.txt
 
       - name: gdextension host make smoke-csv (C mel + ORT, no Godot .so)
         run: |
@@ -168,6 +175,27 @@ jobs:
         run: |
           set -euo pipefail
           nix develop --command bash -c 'python3 -c "import textgrid"; python3 scripts/ci_test_export_fixture.py'
+
+      - name: godot-onnx-loader Nix Godot csv_smoke (Julian path)
+        run: |
+          set -euo pipefail
+          rm -rf /var/tmp/godot-onnx-loader-ci
+          git clone --depth 1 --recurse-submodules \
+            https://github.com/DynamicDevices/godot-onnx-loader.git /var/tmp/godot-onnx-loader-ci
+          cd /var/tmp/godot-onnx-loader-ci
+          rm -rf addons/onnx_loader/bin/libonnxruntime.so*
+          nix develop --command bash -c '
+            set -euo pipefail
+            git submodule update --init --recursive
+            scons platform=linux target=template_debug
+            so=addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
+            test -f "$so"
+            ! ldd "$so" | grep -q libonnxruntime
+            ! ldd "$so" | grep -q libstdc++
+            scons platform=linux target=template_debug smoke-dlopen-ort
+            bash tools/smoke_bad_model.sh
+            bash tools/godot_csv_smoke.sh
+          '
 
       - name: Upload Godot export artefact
         uses: actions/upload-artifact@v7
