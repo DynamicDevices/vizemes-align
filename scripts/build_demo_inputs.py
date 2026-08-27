@@ -100,6 +100,15 @@ def main() -> int:
         f"wrote {npz_path.name} + {csv_path.name} "
         f"rows={len(y_out)} labels={[id_to_name[int(v)] for v in y_out]}"
     )
+    utt_id = index["utterances"][0]["id"]
+    wav_src = ROOT / "data" / "prepared" / args.subset / f"{utt_id}.wav"
+    if not wav_src.is_file():
+        wav_src = ROOT / "data" / "aligned" / args.subset / f"{utt_id}.wav"
+    if wav_src.is_file():
+        import shutil
+
+        shutil.copy2(wav_src, args.out_dir / "ci-fixture.wav")
+        print(f"copied {wav_src.name} → ci-fixture.wav")
     if missing:
         print(f"labels_missing={missing}")
     print(f"absmax={float(np.abs(X_out).max()):.4f} nonzero_rows={int((np.abs(X_out).max(axis=1) > 0).sum())}")

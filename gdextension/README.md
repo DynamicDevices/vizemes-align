@@ -46,7 +46,8 @@ Open `../godot-demo/` → run `mel_smoke.tscn` → expect `GODOT_MEL_ONNX_SMOKE_
 
 Demo drives Ready Player Me blendshapes via `VisemeSystem.set_visemes(vv)` with
 OVR-style names (`sil`, `PP`, …, `U`, optional `LA`). Smoke MLP: 15 classes;
-map `silence`↔`sil`, `ih`/`oh`/`ou`↔`I`/`O`/`U` as needed.
+map `silence`↔`sil`, `ih`/`oh`/`ou`↔`I`/`O`/`U` as needed. Godot helpers:
+`godot-demo/viseme_utils.gd`, `viseme_system_stub.gd`, `lipsync_smoke.tscn`.
 
 ## Host build (C runtime)
 
