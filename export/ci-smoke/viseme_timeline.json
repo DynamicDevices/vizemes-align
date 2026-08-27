@@ -1,0 +1,182 @@
+{
+  "subset": "ci-fixture",
+  "stem": "ci-0001",
+  "wav": "export/ci-smoke/ci-fixture.wav",
+  "model_json": "export/ci-smoke/model.json",
+  "onnx": "export/ci-smoke/model.onnx",
+  "context_frames": 20,
+  "hop_s": 0.01,
+  "duration_s": 1.8,
+  "viseme_names": [
+    "silence",
+    "PP",
+    "FF",
+    "TH",
+    "DD",
+    "kk",
+    "CH",
+    "SS",
+    "nn",
+    "RR",
+    "aa",
+    "E",
+    "ih",
+    "oh",
+    "ou"
+  ],
+  "visemes": {
+    "silence": 0,
+    "PP": 1,
+    "FF": 2,
+    "TH": 3,
+    "DD": 4,
+    "kk": 5,
+    "CH": 6,
+    "SS": 7,
+    "nn": 8,
+    "RR": 9,
+    "aa": 10,
+    "E": 11,
+    "ih": 12,
+    "oh": 13,
+    "ou": 14
+  },
+  "boxes": [
+    {
+      "start": 0.0,
+      "end": 0.12,
+      "expect_id": 0,
+      "expect_name": "silence",
+      "phones": [
+        "sil"
+      ]
+    },
+    {
+      "start": 0.12,
+      "end": 0.24,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 0.24,
+      "end": 0.36,
+      "expect_id": 2,
+      "expect_name": "FF",
+      "phones": [
+        "F"
+      ]
+    },
+    {
+      "start": 0.36,
+      "end": 0.48,
+      "expect_id": 3,
+      "expect_name": "TH",
+      "phones": [
+        "TH"
+      ]
+    },
+    {
+      "start": 0.48,
+      "end": 0.6,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 0.6,
+      "end": 0.72,
+      "expect_id": 5,
+      "expect_name": "kk",
+      "phones": [
+        "K"
+      ]
+    },
+    {
+      "start": 0.72,
+      "end": 0.84,
+      "expect_id": 6,
+      "expect_name": "CH",
+      "phones": [
+        "CH"
+      ]
+    },
+    {
+      "start": 0.84,
+      "end": 0.96,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 0.96,
+      "end": 1.08,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 1.08,
+      "end": 1.2,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "R"
+      ]
+    },
+    {
+      "start": 1.2,
+      "end": 1.32,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AA0"
+      ]
+    },
+    {
+      "start": 1.32,
+      "end": 1.44,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EH0"
+      ]
+    },
+    {
+      "start": 1.44,
+      "end": 1.56,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IH0"
+      ]
+    },
+    {
+      "start": 1.56,
+      "end": 1.68,
+      "expect_id": 13,
+      "expect_name": "oh",
+      "phones": [
+        "OW0"
+      ]
+    },
+    {
+      "start": 1.68,
+      "end": 1.8,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "UW0"
+      ]
+    }
+  ],
+  "note": "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; boxes are MFA phones collapsed to trained viseme labels."
+}
