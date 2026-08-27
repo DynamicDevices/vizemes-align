@@ -26,7 +26,7 @@ endif
 
 OBJS = $(MEL_OBJS) $(RUNTIME_OBJS)
 
-.PHONY: all clean smoke smoke-csv
+.PHONY: all clean smoke smoke-csv dump-mel
 
 all: build/libvizemes_runtime.a
 
@@ -60,9 +60,16 @@ smoke-csv: build/smoke_csv
 	./build/smoke_csv ../export/ci-smoke/model.json ../export/ci-smoke/model.onnx \
 		../export/ci-smoke/demo_inputs.csv
 
+build/dump_mel: tools/dump_mel.c frontends/mel/mel_spectrogram.o src/sidecar_json.o
+	mkdir -p build
+	$(CC) -std=c11 -Wall -Wextra -O2 -Iinclude -Ifrontends/mel -o $@ tools/dump_mel.c \
+		frontends/mel/mel_spectrogram.o src/sidecar_json.o -lm
+
+dump-mel: build/dump_mel
+
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
 clean:
-	rm -f $(MEL_OBJS) src/viseme_runtime.o src/viseme_runtime_stub.o src/sidecar_json.o \
-		build/libvizemes_runtime.a build/smoke_context build/smoke_csv
+	rm -f $(MEL_OBJS) src/sidecar_json.o src/viseme_runtime.o src/viseme_runtime_stub.o \
+		build/libvizemes_runtime.a build/smoke_context build/smoke_csv build/dump_mel
