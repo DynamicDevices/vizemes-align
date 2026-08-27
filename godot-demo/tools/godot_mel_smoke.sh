@@ -32,4 +32,5 @@ run_scene() {
 
 run_scene "res://mel_smoke.tscn" "GODOT_MEL_ONNX_SMOKE_OK"
 run_scene "res://lipsync_smoke.tscn" "GODOT_LIPSYNC_SMOKE_OK"
+run_scene "res://streaming_smoke.tscn" "GODOT_STREAMING_SMOKE_OK"
 echo "GODOT_VIZEMES_SMOKE_OK"

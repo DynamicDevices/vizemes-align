@@ -18,15 +18,13 @@ MelFrontend::~MelFrontend()
 	reset();
 }
 
-void MelFrontend::clear_buffers()
+void MelFrontend::clear_stream()
 {
-	::free(mel_ring);
-	mel_ring = nullptr;
-	mel_filled = 0;
-	::free(pcm_pending);
-	pcm_pending = nullptr;
-	pcm_pending_n = 0;
-	pcm_pending_cap = 0;
+	::free(stream_pcm);
+	stream_pcm = nullptr;
+	stream_pcm_n = 0;
+	stream_pcm_cap = 0;
+	stream_contexts_emitted = 0;
 }
 
 void MelFrontend::_bind_methods()
@@ -34,6 +32,7 @@ void MelFrontend::_bind_methods()
 	ClassDB::bind_method(D_METHOD("configure_from_json", "model_json_path"),
 			&MelFrontend::configure_from_json);
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
+	ClassDB::bind_method(D_METHOD("begin_stream"), &MelFrontend::begin_stream);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
 	ClassDB::bind_method(D_METHOD("push_pcm_contexts", "pcm"), &MelFrontend::push_pcm_contexts);
 	ClassDB::bind_method(D_METHOD("build_utterance_contexts", "pcm"), &MelFrontend::build_utterance_contexts);
@@ -67,14 +66,6 @@ bool MelFrontend::configure_from_json(const String &model_json_path)
 		return false;
 	}
 
-	mel_ring = (float *)calloc((size_t)meta.context_frames * (size_t)meta.n_mels, sizeof(float));
-	pcm_pending_cap = meta.window_length_samples * 4;
-	pcm_pending = (float *)calloc((size_t)pcm_pending_cap, sizeof(float));
-	if (!mel_ring || !pcm_pending) {
-		reset();
-		return false;
-	}
-
 	configured = true;
 	return true;
 }
@@ -84,123 +75,37 @@ void MelFrontend::reset()
 	if (ops && ops->free) {
 		ops->free();
 	}
-	clear_buffers();
+	clear_stream();
 	meta = {};
 	configured = false;
 }
 
-void MelFrontend::ring_push(const float *mel_frame)
+void MelFrontend::begin_stream()
 {
-	const int ctx = meta.context_frames;
-	const int nm = meta.n_mels;
-	if (mel_filled < ctx) {
-		memcpy(mel_ring + (size_t)mel_filled * (size_t)nm, mel_frame, (size_t)nm * sizeof(float));
-		mel_filled++;
+	if (!configured) {
 		return;
 	}
-	memmove(mel_ring, mel_ring + nm, (size_t)(ctx - 1) * (size_t)nm * sizeof(float));
-	memcpy(mel_ring + (size_t)(ctx - 1) * (size_t)nm, mel_frame, (size_t)nm * sizeof(float));
+	clear_stream();
 }
 
-PackedFloat32Array MelFrontend::build_flat_context() const
-{
-	PackedFloat32Array flat;
-	if (!configured || mel_filled < meta.context_frames) {
-		return flat;
-	}
-	flat.resize(meta.input_features);
-	const int ctx = meta.context_frames;
-	const int nm = meta.n_mels;
-	for (int i = 0; i < ctx; i++) {
-		for (int j = 0; j < nm; j++) {
-			flat[i * nm + j] = mel_ring[(size_t)i * (size_t)nm + (size_t)j];
-		}
-	}
-	return flat;
-}
-
-PackedFloat32Array MelFrontend::push_pcm(const PackedFloat32Array &pcm)
-{
-	Array contexts = push_pcm_contexts(pcm);
-	if (contexts.is_empty()) {
-		return PackedFloat32Array();
-	}
-	return contexts[contexts.size() - 1];
-}
-
-Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
+Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const
 {
 	Array out;
-	if (!configured || !ops || !ops->process_frame) {
-		return out;
-	}
-
-	const int win = meta.window_length_samples;
-	const int hop = meta.hop_length_samples;
-	const int nm = meta.n_mels;
-	const int n_in = (int)pcm.size();
-	if (n_in <= 0) {
-		return out;
-	}
-
-	if (pcm_pending_n + n_in > pcm_pending_cap) {
-		int need = pcm_pending_n + n_in;
-		float *nb = (float *)realloc(pcm_pending, (size_t)need * sizeof(float));
-		if (!nb) {
-			return out;
-		}
-		pcm_pending = nb;
-		pcm_pending_cap = need;
-	}
-	memcpy(pcm_pending + pcm_pending_n, pcm.ptr(), (size_t)n_in * sizeof(float));
-	pcm_pending_n += n_in;
-
-	float *frame = (float *)malloc((size_t)nm * sizeof(float));
-	if (!frame) {
-		return out;
-	}
-
-	while (pcm_pending_n >= win) {
-		if (ops->process_frame(pcm_pending, frame) != 0) {
-			::free(frame);
-			return out;
-		}
-		ring_push(frame);
-		int drop = hop;
-		if (drop > pcm_pending_n) {
-			drop = pcm_pending_n;
-		}
-		memmove(pcm_pending, pcm_pending + drop, (size_t)(pcm_pending_n - drop) * sizeof(float));
-		pcm_pending_n -= drop;
-
-		if (mel_filled >= meta.context_frames) {
-			out.push_back(build_flat_context());
-		}
-	}
-
-	::free(frame);
-	return out;
-}
-
-Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
-{
-	Array out;
-	if (!configured || pcm.size() == 0) {
+	if (!configured || !pcm || n_samples == 0) {
 		return out;
 	}
 
 	const int nm = meta.n_mels;
 	const int ctx = meta.context_frames;
-	const int n_in = (int)pcm.size();
 
-	size_t max_frames = (size_t)n_in / (size_t)meta.hop_length_samples + 16;
+	size_t max_frames = n_samples / (size_t)meta.hop_length_samples + 16;
 	float *mel = (float *)calloc(max_frames * (size_t)nm, sizeof(float));
 	if (!mel) {
 		return out;
 	}
 
 	size_t nframes = 0;
-	if (mel_spectrogram_process(pcm.ptr(), (size_t)n_in, mel, &nframes) < 0 || nframes < (size_t)ctx) {
+	if (mel_spectrogram_process(pcm, n_samples, mel, &nframes) < 0 || nframes < (size_t)ctx) {
 		::free(mel);
 		return out;
 	}
@@ -237,7 +142,9 @@ Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
 	::free(mu);
 	::free(sd);
 
-	for (size_t i = (size_t)ctx - 1; i < nframes; i++) {
+	const size_t n_contexts = nframes - (size_t)ctx + 1;
+	for (size_t ci = skip_contexts; ci < n_contexts; ci++) {
+		size_t i = ci + (size_t)ctx - 1;
 		PackedFloat32Array flat;
 		flat.resize(meta.input_features);
 		for (int f = 0; f < ctx; f++) {
@@ -251,6 +158,49 @@ Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
 
 	::free(mel);
 	return out;
+}
+
+PackedFloat32Array MelFrontend::push_pcm(const PackedFloat32Array &pcm)
+{
+	Array contexts = push_pcm_contexts(pcm);
+	if (contexts.is_empty()) {
+		return PackedFloat32Array();
+	}
+	return contexts[contexts.size() - 1];
+}
+
+Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
+{
+	Array out;
+	if (!configured) {
+		return out;
+	}
+
+	const int n_in = (int)pcm.size();
+	if (n_in <= 0) {
+		return out;
+	}
+
+	if (stream_pcm_n + (size_t)n_in > stream_pcm_cap) {
+		size_t need = stream_pcm_n + (size_t)n_in;
+		float *nb = (float *)realloc(stream_pcm, need * sizeof(float));
+		if (!nb) {
+			return out;
+		}
+		stream_pcm = nb;
+		stream_pcm_cap = need;
+	}
+	memcpy(stream_pcm + stream_pcm_n, pcm.ptr(), (size_t)n_in * sizeof(float));
+	stream_pcm_n += (size_t)n_in;
+
+	out = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
+	stream_contexts_emitted += (size_t)out.size();
+	return out;
+}
+
+Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
+{
+	return contexts_from_pcm(pcm.ptr(), (size_t)pcm.size(), 0);
 }
 
 int MelFrontend::get_input_features() const
