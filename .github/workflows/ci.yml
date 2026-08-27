@@ -161,6 +161,7 @@ jobs:
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/demo_inputs.csv
           test -f export/ci-smoke/ci-fixture.wav
+          pip install -q numpy
           make -C gdextension dump-mel
           python3 scripts/compare_mel_parity.py export/ci-smoke/ci-fixture.wav
           cd gdextension
