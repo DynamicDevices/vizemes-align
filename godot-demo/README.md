@@ -58,6 +58,27 @@ pins nixpkgs Godot **4.5.1**.
 
 NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
 
+### Editor (Godot 4.6)
+
+From `vizemes-align` root, with sibling `godot-onnx-loader` checked out and built
+(`bash tools/godot_46_ms_ort.sh` there). Symlink targets are relative to
+`godot-demo/addons/`, so use three `../` segments (not `../godot-onnx-loader`
+from the repo root):
+
+```bash
+ln -sfn ../../../godot-onnx-loader/addons/onnx_loader godot-demo/addons/onnx_loader
+# MelFrontend (usually already present in the tree):
+#   godot-demo/addons/vizemes_mel -> ../../gdextension/godot
+
+nix shell github:nixos/nixpkgs/nixos-26.05#godot_4_6 --command bash -c '
+  unset ONNX_ORT_BIN
+  export ONNX_LOADER_SKIP_SESSION_RELEASE=1
+  godot4 --editor --path '"$PWD"'/godot-demo
+'
+```
+
+Then open `seek_probe.tscn` (F6) or make your own scenes under `godot-demo/`.
+
 ### Seek probe (`seek_probe.tscn`) — editor-friendly
 
 Open `seek_probe.tscn` in Godot and run (F6). Output panel shows for each seek:
