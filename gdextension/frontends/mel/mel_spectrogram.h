@@ -75,6 +75,7 @@ int mel_spectrogram_process_frame(const float *audio, float *mel_out);
 
 /**
  * Process a full waveform and produce mel spectrogram.
+ * Uses center=True reflect padding (torchaudio MelSpectrogram default).
  * Input: num_samples of float audio.
  * Output: mel_out must hold (num_frames * n_mels) floats, row-major (time, mel).
  * Returns number of frames produced, or -1 on error.

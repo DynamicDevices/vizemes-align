@@ -6,6 +6,9 @@ Usage:
   python3 scripts/compare_mel_parity.py --wav ... --model-json export/ci-smoke/model.json
 
 Exit 0 when max abs diff <= --tol (default 1e-3).
+
+Note: C mel uses center=True reflect pad + global AmplitudeToDB (torchaudio batch).
+Some frames still diverge (FFT/filterbank); ~55% of bins within 1 dB on ci-fixture.
 """
 from __future__ import annotations
 

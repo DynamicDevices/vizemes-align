@@ -38,8 +38,10 @@ public:
 	void reset();
 
 	PackedFloat32Array push_pcm(const PackedFloat32Array &pcm);
-	/** All new mel contexts ready after this PCM chunk (streaming / mic path). */
+	/** Streaming chunks (per-frame dB — approximate vs training). */
 	Array push_pcm_contexts(const PackedFloat32Array &pcm);
+	/** Full utterance: batch mel + per-utterance normalize (matches train path). */
+	Array build_utterance_contexts(const PackedFloat32Array &pcm);
 
 	int get_input_features() const;
 	int get_context_frames() const;

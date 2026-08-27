@@ -39,7 +39,8 @@ static void create_hann_window(void)
     if (!s_window) return;
 
     for (int i = 0; i < n; i++) {
-        s_window[i] = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * (float)i / (float)(n - 1)));
+	/* periodic Hann (torch.stft / torchaudio default; not symmetric n-1) */
+	s_window[i] = 0.5f * (1.0f - cosf(2.0f * (float)M_PI * (float)i / (float)n));
     }
 }
 
@@ -179,6 +180,33 @@ static void compute_power_spectrum(const MelComplex *fft_out, float *power, int 
  * ref = max(amin, max_val * 10^(-top_db/10))
  * out = 10 * log10(max(x, ref)) - 10 * log10(max_val)
  */
+static int mel_spectrogram_process_frame_power(const float *audio, float *mel_out);
+
+static void power_frames_to_db_global(float *mel, size_t n_frames, int n_mels, float top_db)
+{
+	size_t n = n_frames * (size_t)n_mels;
+	float global_max = -1e30f;
+
+	for (size_t i = 0; i < n; i++) {
+		float x = mel[i];
+		if (x < AMIN) {
+			x = AMIN;
+		}
+		float db = 10.0f * log10f(x);
+		mel[i] = db;
+		if (db > global_max) {
+			global_max = db;
+		}
+	}
+	float floor = global_max - top_db;
+	for (size_t i = 0; i < n; i++) {
+		if (mel[i] < floor) {
+			mel[i] = floor;
+		}
+	}
+}
+
+/* Per-frame dB (legacy / streaming chunks — not torchaudio batch parity). */
 static void power_to_db(float *mel_frame, int n_mels, float top_db)
 {
     float max_val = AMIN;
@@ -195,6 +223,36 @@ static void power_to_db(float *mel_frame, int n_mels, float top_db)
         if (x < ref) x = ref;
         mel_frame[i] = 10.0f * log10f(x) - log_max;
     }
+}
+
+/* --- Reflect pad (matches torch.nn.functional.pad mode=reflect) --- */
+static float reflect_at(const float *x, size_t n, ptrdiff_t i)
+{
+	if (n == 0) {
+		return 0.f;
+	}
+	while (i < 0 || (size_t)i >= n) {
+		if (i < 0) {
+			i = -i - 1;
+		} else {
+			i = 2 * (ptrdiff_t)n - 1 - i;
+		}
+	}
+	return x[i];
+}
+
+static float *reflect_pad(const float *audio, size_t num_samples, int pad, size_t *padded_len_out)
+{
+	size_t out_n = num_samples + 2 * (size_t)pad;
+	float *padded = (float *)malloc(out_n * sizeof(float));
+	if (!padded) {
+		return NULL;
+	}
+	for (size_t i = 0; i < out_n; i++) {
+		padded[i] = reflect_at(audio, num_samples, (ptrdiff_t)i - pad);
+	}
+	*padded_len_out = out_n;
+	return padded;
 }
 
 /* --- Public API --- */
@@ -250,6 +308,15 @@ void mel_spectrogram_set_fft_callback(MelFFTCallback callback, void *userdata)
 
 int mel_spectrogram_process_frame(const float *audio, float *mel_out)
 {
+	if (mel_spectrogram_process_frame_power(audio, mel_out) != 0) {
+		return -1;
+	}
+	power_to_db(mel_out, s_config.n_mels, s_config.top_db > 0.f ? s_config.top_db : 80.f);
+	return 0;
+}
+
+static int mel_spectrogram_process_frame_power(const float *audio, float *mel_out)
+{
     if (!s_initialized || !audio || !mel_out) return -1;
 
     int n_fft = s_config.n_fft;
@@ -275,47 +342,60 @@ int mel_spectrogram_process_frame(const float *audio, float *mel_out)
     /* Power spectrum */
     compute_power_spectrum(s_fft_buffer, s_power_spectrum, n_fft);
 
-    /* Mel filterbank */
-    for (int mel = 0; mel < n_mels; mel++) {
-        float sum = 0.0f;
-        for (int bin = 0; bin < n_bins; bin++) {
-            sum += s_power_spectrum[bin] * s_filterbank[mel * n_bins + bin];
-        }
-        mel_out[mel] = sum;
-    }
+	/* Mel filterbank (linear power — dB applied in batch by caller) */
+	for (int mel = 0; mel < n_mels; mel++) {
+		float sum = 0.0f;
+		for (int bin = 0; bin < n_bins; bin++) {
+			sum += s_power_spectrum[bin] * s_filterbank[mel * n_bins + bin];
+		}
+		mel_out[mel] = sum;
+	}
 
-    /* Power to dB */
-    power_to_db(mel_out, n_mels, s_config.top_db);
-
-    return 0;
+	return 0;
 }
 
 int mel_spectrogram_process(const float *audio, size_t num_samples,
-                            float *mel_out, size_t *num_frames_out)
+			    float *mel_out, size_t *num_frames_out)
 {
-    if (!s_initialized || !audio || !mel_out || !num_frames_out) return -1;
+	if (!s_initialized || !audio || !mel_out || !num_frames_out) {
+		return -1;
+	}
 
-    int hop = s_config.hop_length_samples;
-    int n_fft = s_config.n_fft;
-    int n_mels = s_config.n_mels;
+	int hop = s_config.hop_length_samples;
+	int n_fft = s_config.n_fft;
+	int n_mels = s_config.n_mels;
+	int pad = n_fft / 2;
 
-    /* Frame extent is n_fft (matches torch.stft) */
-    if (num_samples < (size_t)n_fft) {
-        *num_frames_out = 0;
-        return 0;
-    }
+	/* center=True (torchaudio default): reflect-pad then frame with n_fft extent */
+	size_t padded_len = 0;
+	float *padded = reflect_pad(audio, num_samples, pad, &padded_len);
+	if (!padded) {
+		return -1;
+	}
 
-    size_t num_frames = 1 + (num_samples - (size_t)n_fft) / (size_t)hop;
-    *num_frames_out = num_frames;
+	if (padded_len < (size_t)n_fft) {
+		free(padded);
+		*num_frames_out = 0;
+		return 0;
+	}
 
-    for (size_t t = 0; t < num_frames; t++) {
-        const float *frame = audio + t * (size_t)hop;
-        float *out = mel_out + t * (size_t)n_mels;
-        if (mel_spectrogram_process_frame(frame, out) != 0)
-            return -1;
-    }
+	size_t num_frames = 1 + (padded_len - (size_t)n_fft) / (size_t)hop;
+	*num_frames_out = num_frames;
 
-    return (int)num_frames;
+	for (size_t t = 0; t < num_frames; t++) {
+		const float *frame = padded + t * (size_t)hop;
+		float *out = mel_out + t * (size_t)n_mels;
+		if (mel_spectrogram_process_frame_power(frame, out) != 0) {
+			free(padded);
+			return -1;
+		}
+	}
+
+	power_frames_to_db_global(mel_out, num_frames, n_mels,
+				  s_config.top_db > 0.f ? s_config.top_db : 80.f);
+
+	free(padded);
+	return (int)num_frames;
 }
 
 void mel_spectrogram_get_config(MelSpectrogramConfig *out)
