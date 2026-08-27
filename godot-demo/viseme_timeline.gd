@@ -6,6 +6,8 @@ extends Control
 const VisemeUtils := preload("res://viseme_utils.gd")
 const SAMPLE_RATE := 16000
 
+enum Drag { NONE, PAN, SELECT }
+
 ## Distinct colours for the 15 model classes (silence … ou).
 const LINE_COLORS: Array[Color] = [
 	Color(0.55, 0.55, 0.55),
@@ -50,8 +52,7 @@ var _sel_t0 := -1.0
 var _sel_t1 := -1.0
 var _plot := Rect2()
 
-var _drag_mode := ""  # "", "pan", "select"
-var _drag_anchor_t := 0.0
+var _drag := Drag.NONE
 var _drag_anchor_x := 0.0
 var _pan_view_t0 := 0.0
 var _pan_view_t1 := 0.0
@@ -74,8 +75,7 @@ func _is_headless() -> bool:
 
 func _ready() -> void:
 	_quit_on_done = _is_headless()
-	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-	set_anchors_preset(PRESET_FULL_RECT)
+	# Scene already full-rect; ensure grow + input in editor.
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
 	mouse_filter = Control.MOUSE_FILTER_STOP if not _quit_on_done else Control.MOUSE_FILTER_IGNORE
@@ -99,9 +99,7 @@ func _on_resized() -> void:
 
 ## Plot area from current control size (shared by input + draw so coords stay in sync).
 func _refresh_plot_rect() -> void:
-	var r := size
-	if r.x <= 1.0 or r.y <= 1.0:
-		r = get_viewport_rect().size
+	var r := _canvas_size()
 	var left := 72.0
 	var top := 36.0
 	var right := 160.0
@@ -254,91 +252,93 @@ func _clamp_view() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if _quit_on_done:
 		return
-	_refresh_plot_rect()
-	# Prefer local mouse pos so press/drag share one coordinate space (fixes
-	# selection start drifting left of the click while release looked right).
-	var mouse_x := get_local_mouse_position().x
-	var mouse_pos := get_local_mouse_position()
+	# Local mouse so press/drag share one space (avoids select-start drift).
+	var mouse := get_local_mouse_position()
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_zoom_at(mouse_x, 0.85)
+			_zoom_at(mouse.x, 0.85)
 			accept_event()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_zoom_at(mouse_x, 1.15)
+			_zoom_at(mouse.x, 1.15)
 			accept_event()
 		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
-			if mb.pressed and _plot.has_point(mouse_pos):
-				_drag_mode = "pan"
-				_drag_anchor_x = mouse_x
+			if mb.pressed and _plot.has_point(mouse):
+				_drag = Drag.PAN
+				_drag_anchor_x = mouse.x
 				_pan_view_t0 = _view_t0
 				_pan_view_t1 = _view_t1
 				accept_event()
-			elif not mb.pressed and _drag_mode == "pan":
-				_drag_mode = ""
+			elif not mb.pressed and _drag == Drag.PAN:
+				_drag = Drag.NONE
 				accept_event()
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed and _plot.has_point(mouse_pos):
-				_drag_mode = "select"
-				_drag_anchor_x = mouse_x
-				_drag_anchor_t = _x_to_t(_drag_anchor_x)
-				_sel_t0 = _drag_anchor_t
-				_sel_t1 = _drag_anchor_t
+			if mb.pressed and _plot.has_point(mouse):
+				_drag = Drag.SELECT
+				_drag_anchor_x = mouse.x
+				_sel_t0 = _x_to_t(_drag_anchor_x)
+				_sel_t1 = _sel_t0
 				queue_redraw()
 				accept_event()
-			elif not mb.pressed and _drag_mode == "select":
-				_sel_t0 = _x_to_t(_drag_anchor_x)
-				_sel_t1 = _x_to_t(mouse_x)
-				_drag_mode = ""
-				if absf(_sel_t1 - _sel_t0) < 0.02:
-					_sel_t0 = -1.0
-					_sel_t1 = -1.0
-				else:
-					if _sel_t0 > _sel_t1:
-						var tmp := _sel_t0
-						_sel_t0 = _sel_t1
-						_sel_t1 = tmp
-				queue_redraw()
+			elif not mb.pressed and _drag == Drag.SELECT:
+				_finish_select(mouse.x)
 				accept_event()
 	elif event is InputEventMouseMotion:
-		if _drag_mode == "pan":
-			var dt := (_drag_anchor_x - mouse_x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
+		if _drag == Drag.PAN:
+			var dt := (_drag_anchor_x - mouse.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
 			_view_t0 = _pan_view_t0 + dt
 			_view_t1 = _pan_view_t1 + dt
 			_clamp_view()
 			queue_redraw()
 			accept_event()
-		elif _drag_mode == "select":
-			# Recompute both ends from pixel anchors each frame (survives resize mid-drag).
+		elif _drag == Drag.SELECT:
 			_sel_t0 = _x_to_t(_drag_anchor_x)
-			_sel_t1 = _x_to_t(mouse_x)
+			_sel_t1 = _x_to_t(mouse.x)
 			queue_redraw()
 			accept_event()
 	elif event is InputEventKey and event.pressed and not event.echo:
-		var key := event as InputEventKey
-		if key.keycode == KEY_SPACE or key.keycode == KEY_P:
+		_handle_key(event as InputEventKey)
+
+
+func _finish_select(mouse_x: float) -> void:
+	_sel_t0 = _x_to_t(_drag_anchor_x)
+	_sel_t1 = _x_to_t(mouse_x)
+	_drag = Drag.NONE
+	if absf(_sel_t1 - _sel_t0) < 0.02:
+		_sel_t0 = -1.0
+		_sel_t1 = -1.0
+	elif _sel_t0 > _sel_t1:
+		var tmp := _sel_t0
+		_sel_t0 = _sel_t1
+		_sel_t1 = tmp
+	queue_redraw()
+
+
+func _handle_key(key: InputEventKey) -> void:
+	match key.keycode:
+		KEY_SPACE, KEY_P:
 			_play_selection()
 			accept_event()
-		elif key.keycode == KEY_ESCAPE:
+		KEY_ESCAPE:
 			_stop_playback()
 			_sel_t0 = -1.0
 			_sel_t1 = -1.0
 			queue_redraw()
 			accept_event()
-		elif key.keycode == KEY_R:
+		KEY_R:
 			_view_t0 = 0.0
 			_view_t1 = _duration_s
 			queue_redraw()
 			accept_event()
-		elif key.keycode == KEY_A:
+		KEY_A:
 			_show_a = not _show_a
 			queue_redraw()
 			accept_event()
-		elif key.keycode == KEY_B:
+		KEY_B:
 			_show_b = not _show_b
 			queue_redraw()
 			accept_event()
-		elif key.keycode == KEY_D:
+		KEY_D:
 			_show_disagree = not _show_disagree
 			queue_redraw()
 			accept_event()
@@ -422,58 +422,78 @@ func _process(_delta: float) -> void:
 
 func _draw() -> void:
 	_refresh_plot_rect()
+	var r := _canvas_size()
+	_draw_chrome(r)
+	if _duration_s <= 0.0:
+		return
+	_draw_selection()
+	_draw_mfa_boxes()
+	_draw_disagree_ribbon()
+
+	var curve_top := _plot.position.y + _plot.size.y * 0.28
+	var curve_h := _plot.size.y * 0.68
+	var n_v := _n_visemes()
+	var t0 := float(_context_frames - 1) * _hop_s
+	if _show_a:
+		_draw_series_curves(_series, t0, n_v, curve_top, curve_h, 2.0, 1.0)
+	if _show_b and not _series_b.is_empty():
+		_draw_series_curves(_series_b, t0, n_v, curve_top, curve_h, 1.2, 0.55)
+
+	_draw_time_axis(curve_top, curve_h)
+	_draw_legend(n_v)
+
+
+func _canvas_size() -> Vector2:
 	var r := size
 	if r.x <= 1.0 or r.y <= 1.0:
-		r = get_viewport_rect().size
+		return get_viewport_rect().size
+	return r
 
+
+func _n_visemes() -> int:
+	if _series.is_empty():
+		return 0
+	var first: PackedFloat32Array = _series[0]
+	var n := first.size()
+	n = mini(n, LINE_COLORS.size())
+	if not _names.is_empty():
+		n = mini(n, _names.size())
+	return n
+
+
+func _draw_chrome(r: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, r), Color(0.08, 0.09, 0.11))
 	draw_rect(_plot, Color(0.12, 0.13, 0.16))
 	draw_string(
-		ThemeDB.fallback_font,
-		Vector2(12, 22),
+		ThemeDB.fallback_font, Vector2(12, 22),
 		"Viseme timeline — ONNX weights + MFA boxes",
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		16,
-		Color(0.9, 0.9, 0.9)
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.9, 0.9, 0.9)
 	)
 	draw_string(
-		ThemeDB.fallback_font,
-		Vector2(12, r.y - 28),
-		_status,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		13,
-		Color(0.7, 0.75, 0.8)
+		ThemeDB.fallback_font, Vector2(12, r.y - 28), _status,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.75, 0.8)
 	)
 	if not _quit_on_done:
 		draw_string(
-			ThemeDB.fallback_font,
-			Vector2(12, r.y - 12),
-			_help,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			12,
-			Color(0.55, 0.6, 0.65)
+			ThemeDB.fallback_font, Vector2(12, r.y - 12), _help,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.55, 0.6, 0.65)
 		)
 
-	if _duration_s <= 0.0:
+
+func _draw_selection() -> void:
+	if _sel_t0 < 0.0 or _sel_t1 < 0.0:
 		return
+	var sx0 := _t_to_x(mini(_sel_t0, _sel_t1))
+	var sx1 := _t_to_x(maxf(_sel_t0, _sel_t1))
+	draw_rect(
+		Rect2(sx0, _plot.position.y, maxf(1.0, sx1 - sx0), _plot.size.y),
+		Color(0.95, 0.85, 0.2, 0.18)
+	)
 
-	# Selection overlay
-	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
-		var sa := mini(_sel_t0, _sel_t1)
-		var sb := maxf(_sel_t0, _sel_t1)
-		var sx0 := _t_to_x(sa)
-		var sx1 := _t_to_x(sb)
-		draw_rect(
-			Rect2(sx0, _plot.position.y, maxf(1.0, sx1 - sx0), _plot.size.y),
-			Color(0.95, 0.85, 0.2, 0.18)
-		)
 
-	# MFA / trained boxes (background band) — only those intersecting view.
-	var box_band := Rect2(_plot.position.x, _plot.position.y, _plot.size.x, _plot.size.y * 0.22)
-	draw_rect(box_band, Color(0.16, 0.17, 0.20))
+func _draw_mfa_boxes() -> void:
+	var band := Rect2(_plot.position.x, _plot.position.y, _plot.size.x, _plot.size.y * 0.22)
+	draw_rect(band, Color(0.16, 0.17, 0.20))
 	for b in _boxes:
 		if typeof(b) != TYPE_DICTIONARY:
 			continue
@@ -482,148 +502,100 @@ func _draw() -> void:
 		if bt1 < _view_t0 or bt0 > _view_t1:
 			continue
 		var vid := int(b.get("expect_id", 0))
-		var name := str(b.get("expect_name", "?"))
 		var x0 := _t_to_x(bt0)
 		var x1 := _t_to_x(bt1)
 		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
-		var fill := Color(col.r, col.g, col.b, 0.35)
-		draw_rect(Rect2(x0, box_band.position.y + 4.0, maxf(2.0, x1 - x0), box_band.size.y - 8.0), fill)
+		draw_rect(
+			Rect2(x0, band.position.y + 4.0, maxf(2.0, x1 - x0), band.size.y - 8.0),
+			Color(col.r, col.g, col.b, 0.35)
+		)
 		if x1 - x0 > 28.0:
 			draw_string(
 				ThemeDB.fallback_font,
-				Vector2(x0 + 3.0, box_band.position.y + box_band.size.y * 0.62),
-				name,
-				HORIZONTAL_ALIGNMENT_LEFT,
-				-1,
-				12,
-				Color(1, 1, 1, 0.9)
+				Vector2(x0 + 3.0, band.position.y + band.size.y * 0.62),
+				str(b.get("expect_name", "?")),
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.9)
 			)
 
-	# A/B disagreement ribbon (where argmax differs).
-	if _show_disagree and not _series_b.is_empty():
-		var t_series0_d := float(_context_frames - 1) * _hop_s
-		var n_cmp := mini(_series.size(), _series_b.size())
-		var seg_start := -1.0
-		for i in n_cmp:
-			var t := t_series0_d + float(i) * _hop_s
-			var wa: PackedFloat32Array = _series[i]
-			var wb: PackedFloat32Array = _series_b[i]
-			var disagree := VisemeUtils.argmax(wa) != VisemeUtils.argmax(wb)
-			if disagree and t >= _view_t0 and t <= _view_t1:
-				if seg_start < 0.0:
-					seg_start = t
-			elif seg_start >= 0.0:
-				var x0 := _t_to_x(seg_start)
-				var x1 := _t_to_x(t)
-				draw_rect(
-					Rect2(x0, _plot.position.y + _plot.size.y * 0.22, maxf(1.0, x1 - x0), _plot.size.y * 0.06),
-					Color(1.0, 0.25, 0.25, 0.55)
-				)
-				seg_start = -1.0
-		if seg_start >= 0.0:
-			var x0b := _t_to_x(seg_start)
-			var x1b := _t_to_x(mini(_view_t1, t_series0_d + float(n_cmp - 1) * _hop_s))
-			draw_rect(
-				Rect2(x0b, _plot.position.y + _plot.size.y * 0.22, maxf(1.0, x1b - x0b), _plot.size.y * 0.06),
-				Color(1.0, 0.25, 0.25, 0.55)
-			)
 
-	# Weight curves (clip to view).
-	var curve_top := _plot.position.y + _plot.size.y * 0.28
-	var curve_h := _plot.size.y * 0.68
-	var n_v := 0
-	if not _series.is_empty():
-		var first: PackedFloat32Array = _series[0]
-		n_v = first.size()
-	n_v = mini(n_v, LINE_COLORS.size())
-	n_v = mini(n_v, _names.size() if not _names.is_empty() else n_v)
+func _draw_disagree_ribbon() -> void:
+	if not _show_disagree or _series_b.is_empty():
+		return
+	var t0 := float(_context_frames - 1) * _hop_s
+	var n := mini(_series.size(), _series_b.size())
+	var seg := -1.0
+	var y := _plot.position.y + _plot.size.y * 0.22
+	var h := _plot.size.y * 0.06
+	var col := Color(1.0, 0.25, 0.25, 0.55)
+	for i in n:
+		var t := t0 + float(i) * _hop_s
+		var wa: PackedFloat32Array = _series[i]
+		var wb: PackedFloat32Array = _series_b[i]
+		var bad := VisemeUtils.argmax(wa) != VisemeUtils.argmax(wb) and t >= _view_t0 and t <= _view_t1
+		if bad:
+			if seg < 0.0:
+				seg = t
+		elif seg >= 0.0:
+			draw_rect(Rect2(_t_to_x(seg), y, maxf(1.0, _t_to_x(t) - _t_to_x(seg)), h), col)
+			seg = -1.0
+	if seg >= 0.0:
+		var t_end := mini(_view_t1, t0 + float(n - 1) * _hop_s)
+		draw_rect(Rect2(_t_to_x(seg), y, maxf(1.0, _t_to_x(t_end) - _t_to_x(seg)), h), col)
 
-	var t_series0 := float(_context_frames - 1) * _hop_s
-	if _show_a:
-		_draw_series_curves(_series, t_series0, n_v, curve_top, curve_h, 2.0, 1.0)
-	if _show_b and not _series_b.is_empty():
-		_draw_series_curves(_series_b, t_series0, n_v, curve_top, curve_h, 1.2, 0.55)
 
+func _draw_time_axis(curve_top: float, curve_h: float) -> void:
 	draw_line(
 		Vector2(_plot.position.x, curve_top + curve_h),
 		Vector2(_plot.position.x + _plot.size.x, curve_top + curve_h),
-		Color(0.5, 0.5, 0.55),
-		1.0
+		Color(0.5, 0.5, 0.55), 1.0
+	)
+	var ty := _plot.position.y + _plot.size.y + 22.0
+	draw_string(
+		ThemeDB.fallback_font, Vector2(_plot.position.x, ty), "%.2fs" % _view_t0,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	draw_string(
-		ThemeDB.fallback_font,
-		Vector2(_plot.position.x, _plot.position.y + _plot.size.y + 22.0),
-		"%.2fs" % _view_t0,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		12,
-		Color(0.75, 0.75, 0.8)
-	)
-	draw_string(
-		ThemeDB.fallback_font,
-		Vector2(_plot.position.x + _plot.size.x - 48.0, _plot.position.y + _plot.size.y + 22.0),
-		"%.2fs" % _view_t1,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		12,
-		Color(0.75, 0.75, 0.8)
+		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 48.0, ty), "%.2fs" % _view_t1,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0 and absf(_sel_t1 - _sel_t0) >= 0.02:
 		draw_string(
 			ThemeDB.fallback_font,
-			Vector2(_plot.position.x + _plot.size.x * 0.35, _plot.position.y + _plot.size.y + 22.0),
+			Vector2(_plot.position.x + _plot.size.x * 0.35, ty),
 			"sel %.2f–%.2fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)],
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			12,
-			Color(0.95, 0.85, 0.35)
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.85, 0.35)
 		)
 
-	var legend_x := _plot.position.x + _plot.size.x + 12.0
-	var legend_y := _plot.position.y
+
+func _draw_legend(n_v: int) -> void:
+	var lx := _plot.position.x + _plot.size.x + 12.0
+	var ly := _plot.position.y
 	for vi in n_v:
-		var lname := str(_names[vi]) if vi < _names.size() else str(vi)
-		var col2: Color = LINE_COLORS[vi]
-		draw_rect(Rect2(legend_x, legend_y + float(vi) * 18.0, 12, 12), col2)
+		draw_rect(Rect2(lx, ly + float(vi) * 18.0, 12, 12), LINE_COLORS[vi])
 		draw_string(
 			ThemeDB.fallback_font,
-			Vector2(legend_x + 18.0, legend_y + float(vi) * 18.0 + 11.0),
-			lname,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			12,
-			Color(0.85, 0.85, 0.9)
+			Vector2(lx + 18.0, ly + float(vi) * 18.0 + 11.0),
+			str(_names[vi]) if vi < _names.size() else str(vi),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.85, 0.85, 0.9)
 		)
-	# A/B legend footer
-	var foot_y := legend_y + float(n_v) * 18.0 + 10.0
+	var foot := ly + float(n_v) * 18.0 + 10.0
 	draw_string(
-		ThemeDB.fallback_font,
-		Vector2(legend_x, foot_y),
+		ThemeDB.fallback_font, Vector2(lx, foot),
 		("%s%s" % ["● " if _show_a else "○ ", _label_a]),
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		11,
-		Color(0.9, 0.9, 0.95)
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.95)
 	)
-	if not _series_b.is_empty():
-		draw_string(
-			ThemeDB.fallback_font,
-			Vector2(legend_x, foot_y + 16.0),
-			("%s%s" % ["● " if _show_b else "○ ", _label_b]),
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			11,
-			Color(0.75, 0.8, 0.9)
-		)
-		draw_string(
-			ThemeDB.fallback_font,
-			Vector2(legend_x, foot_y + 32.0),
-			("%sdisagree" % ["● " if _show_disagree else "○ "]),
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			11,
-			Color(1.0, 0.45, 0.45)
-		)
+	if _series_b.is_empty():
+		return
+	draw_string(
+		ThemeDB.fallback_font, Vector2(lx, foot + 16.0),
+		("%s%s" % ["● " if _show_b else "○ ", _label_b]),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.8, 0.9)
+	)
+	draw_string(
+		ThemeDB.fallback_font, Vector2(lx, foot + 32.0),
+		("%sdisagree" % ["● " if _show_disagree else "○ "]),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.45)
+	)
 
 
 func _draw_series_curves(
