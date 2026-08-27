@@ -75,16 +75,38 @@ func _is_headless() -> bool:
 func _ready() -> void:
 	_quit_on_done = _is_headless()
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
+	set_anchors_preset(PRESET_FULL_RECT)
+	grow_horizontal = Control.GROW_DIRECTION_BOTH
+	grow_vertical = Control.GROW_DIRECTION_BOTH
 	mouse_filter = Control.MOUSE_FILTER_STOP if not _quit_on_done else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL
+	resized.connect(_on_resized)
 	var code := _load_and_run()
 	if not _quit_on_done:
 		_setup_audio()
 		grab_focus()
+	_refresh_plot_rect()
 	queue_redraw()
 	if _quit_on_done:
 		await get_tree().process_frame
 		get_tree().quit(code)
+
+
+func _on_resized() -> void:
+	_refresh_plot_rect()
+	queue_redraw()
+
+
+## Plot area from current control size (shared by input + draw so coords stay in sync).
+func _refresh_plot_rect() -> void:
+	var r := size
+	if r.x <= 1.0 or r.y <= 1.0:
+		r = get_viewport_rect().size
+	var left := 72.0
+	var top := 36.0
+	var right := 160.0
+	var bottom := 56.0
+	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
 
 
 func _setup_audio() -> void:
@@ -232,18 +254,23 @@ func _clamp_view() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if _quit_on_done:
 		return
+	_refresh_plot_rect()
+	# Prefer local mouse pos so press/drag share one coordinate space (fixes
+	# selection start drifting left of the click while release looked right).
+	var mouse_x := get_local_mouse_position().x
+	var mouse_pos := get_local_mouse_position()
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_zoom_at(mb.position.x, 0.85)
+			_zoom_at(mouse_x, 0.85)
 			accept_event()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_zoom_at(mb.position.x, 1.15)
+			_zoom_at(mouse_x, 1.15)
 			accept_event()
 		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
-			if mb.pressed and _plot.has_point(mb.position):
+			if mb.pressed and _plot.has_point(mouse_pos):
 				_drag_mode = "pan"
-				_drag_anchor_x = mb.position.x
+				_drag_anchor_x = mouse_x
 				_pan_view_t0 = _view_t0
 				_pan_view_t1 = _view_t1
 				accept_event()
@@ -251,14 +278,17 @@ func _gui_input(event: InputEvent) -> void:
 				_drag_mode = ""
 				accept_event()
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed and _plot.has_point(mb.position):
+			if mb.pressed and _plot.has_point(mouse_pos):
 				_drag_mode = "select"
-				_drag_anchor_t = _x_to_t(mb.position.x)
+				_drag_anchor_x = mouse_x
+				_drag_anchor_t = _x_to_t(_drag_anchor_x)
 				_sel_t0 = _drag_anchor_t
 				_sel_t1 = _drag_anchor_t
 				queue_redraw()
 				accept_event()
 			elif not mb.pressed and _drag_mode == "select":
+				_sel_t0 = _x_to_t(_drag_anchor_x)
+				_sel_t1 = _x_to_t(mouse_x)
 				_drag_mode = ""
 				if absf(_sel_t1 - _sel_t0) < 0.02:
 					_sel_t0 = -1.0
@@ -271,16 +301,17 @@ func _gui_input(event: InputEvent) -> void:
 				queue_redraw()
 				accept_event()
 	elif event is InputEventMouseMotion:
-		var mm := event as InputEventMouseMotion
 		if _drag_mode == "pan":
-			var dt := (_drag_anchor_x - mm.position.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
+			var dt := (_drag_anchor_x - mouse_x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
 			_view_t0 = _pan_view_t0 + dt
 			_view_t1 = _pan_view_t1 + dt
 			_clamp_view()
 			queue_redraw()
 			accept_event()
 		elif _drag_mode == "select":
-			_sel_t1 = _x_to_t(mm.position.x)
+			# Recompute both ends from pixel anchors each frame (survives resize mid-drag).
+			_sel_t0 = _x_to_t(_drag_anchor_x)
+			_sel_t1 = _x_to_t(mouse_x)
 			queue_redraw()
 			accept_event()
 	elif event is InputEventKey and event.pressed and not event.echo:
@@ -390,12 +421,10 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	var r := get_rect().size
-	var left := 72.0
-	var top := 36.0
-	var right := 160.0
-	var bottom := 56.0
-	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
+	_refresh_plot_rect()
+	var r := size
+	if r.x <= 1.0 or r.y <= 1.0:
+		r = get_viewport_rect().size
 
 	draw_rect(Rect2(Vector2.ZERO, r), Color(0.08, 0.09, 0.11))
 	draw_rect(_plot, Color(0.12, 0.13, 0.16))
