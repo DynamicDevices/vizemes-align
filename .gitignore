@@ -18,4 +18,7 @@ gdextension/godot/bin/
 godot-demo/.godot/
 export/ci-smoke/demo_row0.f32
 
-.cursor/
+.cursor/*
+!.cursor/rules/
+.cursor/rules/*
+!.cursor/rules/vizemes-telegram.mdc
