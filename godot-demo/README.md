@@ -73,6 +73,7 @@ ln -sfn ../../../godot-onnx-loader/addons/onnx_loader godot-demo/addons/onnx_loa
 
 nix shell github:nixos/nixpkgs/nixos-26.05#godot_4_6 --command bash -c '
   unset ONNX_ORT_BIN
+  # ReleaseSession skip defaults on in recent onnx-loader; =1 still fine.
   export ONNX_LOADER_SKIP_SESSION_RELEASE=1
   godot4 --editor --path '"$PWD"'/godot-demo
 '
