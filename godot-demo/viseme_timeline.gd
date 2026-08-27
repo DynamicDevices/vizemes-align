@@ -1,8 +1,10 @@
 extends Control
 ## Overlay plot: 15 ONNX viseme weights vs time + MFA/trained label boxes.
-## Open viseme_timeline.tscn in Godot 4.6 and run (F6).
+## Editor: wheel zoom, middle-drag pan, left-drag select, Space/P play selection
+## via AudioStreamGenerator. Headless: load + print GODOT_VISEME_TIMELINE_OK.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const SAMPLE_RATE := 16000
 
 ## Distinct colours for the 15 model classes (silence … ou).
 const LINE_COLORS: Array[Color] = [
@@ -32,6 +34,27 @@ var _boxes: Array = []
 ## Each entry: PackedFloat32Array of length n_visemes (softmax at that hop).
 var _series: Array = []
 var _status := ""
+var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space/P=play  Esc=clear"
+
+var _pcm := PackedFloat32Array()
+var _view_t0 := 0.0
+var _view_t1 := 1.0
+var _sel_t0 := -1.0
+var _sel_t1 := -1.0
+var _plot := Rect2()
+
+var _drag_mode := ""  # "", "pan", "select"
+var _drag_anchor_t := 0.0
+var _drag_anchor_x := 0.0
+var _pan_view_t0 := 0.0
+var _pan_view_t1 := 0.0
+
+var _player: AudioStreamPlayer
+var _gen: AudioStreamGenerator
+var _playback: AudioStreamGeneratorPlayback
+var _play_i := 0
+var _play_end := 0
+var _playing := false
 
 
 func _repo_root() -> String:
@@ -45,13 +68,25 @@ func _is_headless() -> bool:
 func _ready() -> void:
 	_quit_on_done = _is_headless()
 	set_anchors_and_offsets_preset(PRESET_FULL_RECT)
-	mouse_filter = MOUSE_FILTER_IGNORE
+	mouse_filter = Control.MOUSE_FILTER_STOP if not _quit_on_done else Control.MOUSE_FILTER_IGNORE
+	focus_mode = Control.FOCUS_ALL
 	var code := _load_and_run()
+	if not _quit_on_done:
+		_setup_audio()
+		grab_focus()
 	queue_redraw()
 	if _quit_on_done:
-		# Give one frame so headless can still dump status prints.
 		await get_tree().process_frame
 		get_tree().quit(code)
+
+
+func _setup_audio() -> void:
+	_gen = AudioStreamGenerator.new()
+	_gen.mix_rate = float(SAMPLE_RATE)
+	_gen.buffer_length = 0.1
+	_player = AudioStreamPlayer.new()
+	_player.stream = _gen
+	add_child(_player)
 
 
 func _load_and_run() -> int:
@@ -98,12 +133,12 @@ func _load_and_run() -> int:
 		push_error(_status)
 		return 1
 
-	var pcm := VisemeUtils.load_wav_pcm(wav_path)
-	if pcm.is_empty():
+	_pcm = VisemeUtils.load_wav_pcm(wav_path)
+	if _pcm.is_empty():
 		_status = "empty wav"
 		return 1
 
-	var contexts: Array = mel.build_utterance_contexts(pcm)
+	var contexts: Array = mel.build_utterance_contexts(_pcm)
 	if contexts.is_empty():
 		_status = "no mel contexts"
 		push_error(_status)
@@ -119,10 +154,11 @@ func _load_and_run() -> int:
 			return 1
 		_series.append(VisemeUtils.softmax(logits))
 
-	# Causal windows: first context ends at (context_frames-1)*hop.
 	var t0 := float(_context_frames - 1) * _hop_s
 	var t_end := t0 + float(maxi(0, _series.size() - 1)) * _hop_s
 	_duration_s = maxf(_duration_s, t_end)
+	_view_t0 = 0.0
+	_view_t1 = _duration_s
 
 	_status = "stem=%s windows=%d duration=%.2fs boxes=%d" % [
 		str(probe.get("stem", "?")), _series.size(), _duration_s, _boxes.size()
@@ -132,34 +168,247 @@ func _load_and_run() -> int:
 	return 0
 
 
+func _view_span() -> float:
+	return maxf(1e-4, _view_t1 - _view_t0)
+
+
+func _x_to_t(x: float) -> float:
+	if _plot.size.x <= 0.0:
+		return _view_t0
+	var u := clampf((x - _plot.position.x) / _plot.size.x, 0.0, 1.0)
+	return _view_t0 + u * _view_span()
+
+
+func _t_to_x(t: float) -> float:
+	var u := clampf((t - _view_t0) / _view_span(), 0.0, 1.0)
+	return _plot.position.x + u * _plot.size.x
+
+
+func _clamp_view() -> void:
+	var span := _view_span()
+	span = clampf(span, 0.05, maxf(0.05, _duration_s))
+	_view_t0 = clampf(_view_t0, 0.0, maxf(0.0, _duration_s - span))
+	_view_t1 = _view_t0 + span
+	if _view_t1 > _duration_s:
+		_view_t1 = _duration_s
+		_view_t0 = maxf(0.0, _view_t1 - span)
+
+
+func _gui_input(event: InputEvent) -> void:
+	if _quit_on_done:
+		return
+	if event is InputEventMouseButton:
+		var mb := event as InputEventMouseButton
+		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
+			_zoom_at(mb.position.x, 0.85)
+			accept_event()
+		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
+			_zoom_at(mb.position.x, 1.15)
+			accept_event()
+		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
+			if mb.pressed and _plot.has_point(mb.position):
+				_drag_mode = "pan"
+				_drag_anchor_x = mb.position.x
+				_pan_view_t0 = _view_t0
+				_pan_view_t1 = _view_t1
+				accept_event()
+			elif not mb.pressed and _drag_mode == "pan":
+				_drag_mode = ""
+				accept_event()
+		elif mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed and _plot.has_point(mb.position):
+				_drag_mode = "select"
+				_drag_anchor_t = _x_to_t(mb.position.x)
+				_sel_t0 = _drag_anchor_t
+				_sel_t1 = _drag_anchor_t
+				queue_redraw()
+				accept_event()
+			elif not mb.pressed and _drag_mode == "select":
+				_drag_mode = ""
+				if absf(_sel_t1 - _sel_t0) < 0.02:
+					_sel_t0 = -1.0
+					_sel_t1 = -1.0
+				else:
+					if _sel_t0 > _sel_t1:
+						var tmp := _sel_t0
+						_sel_t0 = _sel_t1
+						_sel_t1 = tmp
+				queue_redraw()
+				accept_event()
+	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		if _drag_mode == "pan":
+			var dt := (_drag_anchor_x - mm.position.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
+			_view_t0 = _pan_view_t0 + dt
+			_view_t1 = _pan_view_t1 + dt
+			_clamp_view()
+			queue_redraw()
+			accept_event()
+		elif _drag_mode == "select":
+			_sel_t1 = _x_to_t(mm.position.x)
+			queue_redraw()
+			accept_event()
+	elif event is InputEventKey and event.pressed and not event.echo:
+		var key := event as InputEventKey
+		if key.keycode == KEY_SPACE or key.keycode == KEY_P:
+			_play_selection()
+			accept_event()
+		elif key.keycode == KEY_ESCAPE:
+			_stop_playback()
+			_sel_t0 = -1.0
+			_sel_t1 = -1.0
+			queue_redraw()
+			accept_event()
+		elif key.keycode == KEY_R:
+			_view_t0 = 0.0
+			_view_t1 = _duration_s
+			queue_redraw()
+			accept_event()
+
+
+func _zoom_at(x: float, factor: float) -> void:
+	var t_focus := _x_to_t(x)
+	var span := _view_span() * factor
+	span = clampf(span, 0.05, maxf(0.05, _duration_s))
+	var left_frac := (t_focus - _view_t0) / _view_span()
+	_view_t0 = t_focus - left_frac * span
+	_view_t1 = _view_t0 + span
+	_clamp_view()
+	queue_redraw()
+
+
+func _play_selection() -> void:
+	if _pcm.is_empty():
+		return
+	var a := _sel_t0
+	var b := _sel_t1
+	if a < 0.0 or b < 0.0 or absf(b - a) < 0.02:
+		# No selection: play the visible window.
+		a = _view_t0
+		b = _view_t1
+	if a > b:
+		var tmp := a
+		a = b
+		b = tmp
+	a = clampf(a, 0.0, _duration_s)
+	b = clampf(b, 0.0, _duration_s)
+	_play_i = clampi(int(a * float(SAMPLE_RATE)), 0, _pcm.size())
+	_play_end = clampi(int(b * float(SAMPLE_RATE)), 0, _pcm.size())
+	if _play_end <= _play_i:
+		return
+	_stop_playback()
+	_player.play()
+	_playback = _player.get_stream_playback() as AudioStreamGeneratorPlayback
+	_playing = _playback != null
+	if _playing:
+		_status = "playing %.2f–%.2fs" % [a, b]
+		queue_redraw()
+
+
+func _stop_playback() -> void:
+	_playing = false
+	_playback = null
+	if _player != null and _player.playing:
+		_player.stop()
+
+
+func _process(_delta: float) -> void:
+	if not _playing or _playback == null:
+		return
+	var frames := _playback.get_frames_available()
+	if frames <= 0:
+		return
+	var buf := PackedVector2Array()
+	buf.resize(frames)
+	var filled := 0
+	for i in frames:
+		if _play_i >= _play_end:
+			break
+		var s := _pcm[_play_i]
+		buf[i] = Vector2(s, s)
+		_play_i += 1
+		filled += 1
+	if filled <= 0:
+		_playing = false
+		_status = "play done"
+		queue_redraw()
+		return
+	if filled < frames:
+		buf.resize(filled)
+	_playback.push_buffer(buf)
+	if _play_i >= _play_end:
+		_playing = false
+		_status = "play done"
+		queue_redraw()
+
+
 func _draw() -> void:
 	var r := get_rect().size
 	var left := 72.0
 	var top := 36.0
 	var right := 160.0
-	var bottom := 48.0
-	var plot := Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
+	var bottom := 56.0
+	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
 
 	draw_rect(Rect2(Vector2.ZERO, r), Color(0.08, 0.09, 0.11))
-	draw_rect(plot, Color(0.12, 0.13, 0.16))
-	draw_string(ThemeDB.fallback_font, Vector2(12, 22), "Viseme timeline — ONNX weights + MFA boxes", HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.9, 0.9, 0.9))
-	draw_string(ThemeDB.fallback_font, Vector2(12, r.y - 16), _status, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.75, 0.8))
+	draw_rect(_plot, Color(0.12, 0.13, 0.16))
+	draw_string(
+		ThemeDB.fallback_font,
+		Vector2(12, 22),
+		"Viseme timeline — ONNX weights + MFA boxes",
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		16,
+		Color(0.9, 0.9, 0.9)
+	)
+	draw_string(
+		ThemeDB.fallback_font,
+		Vector2(12, r.y - 28),
+		_status,
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		13,
+		Color(0.7, 0.75, 0.8)
+	)
+	if not _quit_on_done:
+		draw_string(
+			ThemeDB.fallback_font,
+			Vector2(12, r.y - 12),
+			_help,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			12,
+			Color(0.55, 0.6, 0.65)
+		)
 
 	if _duration_s <= 0.0:
 		return
 
-	# MFA / trained boxes (background band).
-	var box_band := Rect2(plot.position.x, plot.position.y, plot.size.x, plot.size.y * 0.22)
+	# Selection overlay
+	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
+		var sa := mini(_sel_t0, _sel_t1)
+		var sb := maxf(_sel_t0, _sel_t1)
+		var sx0 := _t_to_x(sa)
+		var sx1 := _t_to_x(sb)
+		draw_rect(
+			Rect2(sx0, _plot.position.y, maxf(1.0, sx1 - sx0), _plot.size.y),
+			Color(0.95, 0.85, 0.2, 0.18)
+		)
+
+	# MFA / trained boxes (background band) — only those intersecting view.
+	var box_band := Rect2(_plot.position.x, _plot.position.y, _plot.size.x, _plot.size.y * 0.22)
 	draw_rect(box_band, Color(0.16, 0.17, 0.20))
 	for b in _boxes:
 		if typeof(b) != TYPE_DICTIONARY:
 			continue
-		var t0 := float(b.get("start", 0.0))
-		var t1 := float(b.get("end", 0.0))
+		var bt0 := float(b.get("start", 0.0))
+		var bt1 := float(b.get("end", 0.0))
+		if bt1 < _view_t0 or bt0 > _view_t1:
+			continue
 		var vid := int(b.get("expect_id", 0))
 		var name := str(b.get("expect_name", "?"))
-		var x0 := plot.position.x + plot.size.x * clampf(t0 / _duration_s, 0.0, 1.0)
-		var x1 := plot.position.x + plot.size.x * clampf(t1 / _duration_s, 0.0, 1.0)
+		var x0 := _t_to_x(bt0)
+		var x1 := _t_to_x(bt1)
 		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
 		var fill := Color(col.r, col.g, col.b, 0.35)
 		draw_rect(Rect2(x0, box_band.position.y + 4.0, maxf(2.0, x1 - x0), box_band.size.y - 8.0), fill)
@@ -174,9 +423,9 @@ func _draw() -> void:
 				Color(1, 1, 1, 0.9)
 			)
 
-	# Weight curves.
-	var curve_top := plot.position.y + plot.size.y * 0.28
-	var curve_h := plot.size.y * 0.68
+	# Weight curves (clip to view).
+	var curve_top := _plot.position.y + _plot.size.y * 0.28
+	var curve_h := _plot.size.y * 0.68
 	var n_v := 0
 	if not _series.is_empty():
 		var first: PackedFloat32Array = _series[0]
@@ -184,32 +433,31 @@ func _draw() -> void:
 	n_v = mini(n_v, LINE_COLORS.size())
 	n_v = mini(n_v, _names.size() if not _names.is_empty() else n_v)
 
-	var t_start := float(_context_frames - 1) * _hop_s
-
+	var t_series0 := float(_context_frames - 1) * _hop_s
 	for vi in n_v:
 		var col: Color = LINE_COLORS[vi]
 		var pts := PackedVector2Array()
-		pts.resize(_series.size())
 		for i in _series.size():
+			var t := t_series0 + float(i) * _hop_s
+			if t < _view_t0 - _hop_s or t > _view_t1 + _hop_s:
+				continue
 			var w: PackedFloat32Array = _series[i]
-			var t := t_start + float(i) * _hop_s
-			var x := plot.position.x + plot.size.x * clampf(t / _duration_s, 0.0, 1.0)
+			var x := _t_to_x(t)
 			var y := curve_top + curve_h * (1.0 - clampf(w[vi], 0.0, 1.0))
-			pts[i] = Vector2(x, y)
+			pts.append(Vector2(x, y))
 		if pts.size() >= 2:
 			draw_polyline(pts, col, 2.0, true)
 
-	# Axes / legend.
 	draw_line(
-		Vector2(plot.position.x, curve_top + curve_h),
-		Vector2(plot.position.x + plot.size.x, curve_top + curve_h),
+		Vector2(_plot.position.x, curve_top + curve_h),
+		Vector2(_plot.position.x + _plot.size.x, curve_top + curve_h),
 		Color(0.5, 0.5, 0.55),
 		1.0
 	)
 	draw_string(
 		ThemeDB.fallback_font,
-		Vector2(plot.position.x, plot.position.y + plot.size.y + 22.0),
-		"0s",
+		Vector2(_plot.position.x, _plot.position.y + _plot.size.y + 22.0),
+		"%.2fs" % _view_t0,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
 		12,
@@ -217,24 +465,34 @@ func _draw() -> void:
 	)
 	draw_string(
 		ThemeDB.fallback_font,
-		Vector2(plot.position.x + plot.size.x - 40.0, plot.position.y + plot.size.y + 22.0),
-		"%.1fs" % _duration_s,
+		Vector2(_plot.position.x + _plot.size.x - 48.0, _plot.position.y + _plot.size.y + 22.0),
+		"%.2fs" % _view_t1,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
 		12,
 		Color(0.75, 0.75, 0.8)
 	)
+	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0 and absf(_sel_t1 - _sel_t0) >= 0.02:
+		draw_string(
+			ThemeDB.fallback_font,
+			Vector2(_plot.position.x + _plot.size.x * 0.35, _plot.position.y + _plot.size.y + 22.0),
+			"sel %.2f–%.2fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)],
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			12,
+			Color(0.95, 0.85, 0.35)
+		)
 
-	var legend_x := plot.position.x + plot.size.x + 12.0
-	var legend_y := plot.position.y
+	var legend_x := _plot.position.x + _plot.size.x + 12.0
+	var legend_y := _plot.position.y
 	for vi in n_v:
-		var name := str(_names[vi]) if vi < _names.size() else str(vi)
+		var lname := str(_names[vi]) if vi < _names.size() else str(vi)
 		var col2: Color = LINE_COLORS[vi]
 		draw_rect(Rect2(legend_x, legend_y + float(vi) * 18.0, 12, 12), col2)
 		draw_string(
 			ThemeDB.fallback_font,
 			Vector2(legend_x + 18.0, legend_y + float(vi) * 18.0 + 11.0),
-			name,
+			lname,
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1,
 			12,

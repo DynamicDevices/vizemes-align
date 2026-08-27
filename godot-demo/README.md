@@ -113,6 +113,10 @@ python3 scripts/export_viseme_timeline.py --subset ci-fixture
 Open `viseme_timeline.tscn` and run (F6). Marker: `GODOT_VISEME_TIMELINE_OK`.
 Current committed demo JSON uses LibriSpeech **1320-122617-0010** (~10s) with MFA boxes.
 
+Editor controls: mouse wheel zoom, middle-drag pan, left-drag select a time region,
+Space/P play selection (or the visible window) via `AudioStreamGenerator`, Esc clear,
+R reset zoom.
+
 ### Live mic (`mic_lipsync.tscn`)
 
 Open in Godot (not headless): captures mic via `AudioEffectCapture`, resamples to 16 kHz,
