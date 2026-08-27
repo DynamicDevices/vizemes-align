@@ -354,8 +354,8 @@ static int mel_spectrogram_process_frame_power(const float *audio, float *mel_ou
 	return 0;
 }
 
-int mel_spectrogram_process(const float *audio, size_t num_samples,
-			    float *mel_out, size_t *num_frames_out)
+static int mel_spectrogram_process_power_padded(const float *audio, size_t num_samples,
+						float *mel_out, size_t *num_frames_out)
 {
 	if (!s_initialized || !audio || !mel_out || !num_frames_out) {
 		return -1;
@@ -366,7 +366,6 @@ int mel_spectrogram_process(const float *audio, size_t num_samples,
 	int n_mels = s_config.n_mels;
 	int pad = n_fft / 2;
 
-	/* center=True (torchaudio default): reflect-pad then frame with n_fft extent */
 	size_t padded_len = 0;
 	float *padded = reflect_pad(audio, num_samples, pad, &padded_len);
 	if (!padded) {
@@ -391,11 +390,28 @@ int mel_spectrogram_process(const float *audio, size_t num_samples,
 		}
 	}
 
-	power_frames_to_db_global(mel_out, num_frames, n_mels,
-				  s_config.top_db > 0.f ? s_config.top_db : 80.f);
-
 	free(padded);
 	return (int)num_frames;
+}
+
+int mel_spectrogram_process_power(const float *audio, size_t num_samples, float *mel_out,
+				  size_t *num_frames_out)
+{
+	return mel_spectrogram_process_power_padded(audio, num_samples, mel_out, num_frames_out);
+}
+
+int mel_spectrogram_process(const float *audio, size_t num_samples,
+			    float *mel_out, size_t *num_frames_out)
+{
+	int rc = mel_spectrogram_process_power_padded(audio, num_samples, mel_out, num_frames_out);
+	if (rc < 0) {
+		return rc;
+	}
+	if (*num_frames_out > 0) {
+		power_frames_to_db_global(mel_out, *num_frames_out, s_config.n_mels,
+					  s_config.top_db > 0.f ? s_config.top_db : 80.f);
+	}
+	return rc;
 }
 
 void mel_spectrogram_get_config(MelSpectrogramConfig *out)

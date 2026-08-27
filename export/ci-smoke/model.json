@@ -36,5 +36,5 @@
   "frames_trained": 162,
   "utterances": 1,
   "onnx": "model.onnx",
-  "note": "Input is flattened causal mel context: (batch, context*n_mels). Runtime mel SoT: OpenLipSync/audio/mel_spectrogram.c (match torchaudio)."
+  "note": "Input is flattened causal mel context: (batch, context*n_mels). Runtime mel SoT: gdextension/frontends/mel (host C; training via scripts/mel_features_c.py)."
 }

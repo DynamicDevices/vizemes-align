@@ -17,8 +17,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from export_godot_package import load_viseme_map, phones_from_textgrid  # noqa: E402
+from mel_features_c import mel_features_c  # noqa: E402
 
-# Match OpenLipSync training/recipes/tcn_config.toml defaults
+# Match OpenLipSync training/recipes/tcn_config.toml defaults (also in model.json sidecar).
 AUDIO = {
     "sample_rate": 16000,
     "n_fft": 1024,
@@ -31,42 +32,9 @@ AUDIO = {
 
 
 def mel_features(wav_path: Path) -> np.ndarray:
-    """Return (T, n_mels) float32 log-mel (power → dB), OpenLipSync-compatible."""
-    import torch
-    import torchaudio
-    import torchaudio.transforms as T
-
-    try:
-        import soundfile as sf
-
-        data, sr = sf.read(str(wav_path), dtype="float32", always_2d=False)
-        if data.ndim == 1:
-            waveform = torch.from_numpy(data).unsqueeze(0)
-        else:
-            waveform = torch.from_numpy(data.T)
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-    except Exception:
-        waveform, sr = torchaudio.load(str(wav_path))
-        if waveform.shape[0] > 1:
-            waveform = torch.mean(waveform, dim=0, keepdim=True)
-
-    if sr != AUDIO["sample_rate"]:
-        waveform = T.Resample(sr, AUDIO["sample_rate"])(waveform)
-
-    mel = T.MelSpectrogram(
-        sample_rate=AUDIO["sample_rate"],
-        n_fft=AUDIO["n_fft"],
-        win_length=AUDIO["window_length_samples"],
-        hop_length=AUDIO["hop_length_samples"],
-        n_mels=AUDIO["n_mels"],
-        f_min=AUDIO["fmin"],
-        f_max=AUDIO["fmax"],
-        power=2.0,
-        normalized=False,
-    )(waveform)
-    mel_db = T.AmplitudeToDB(stype="power", top_db=80)(mel)
-    # (1, n_mels, T) → (T, n_mels)
-    return mel_db.squeeze(0).transpose(0, 1).contiguous().numpy().astype(np.float32)
+    """Return (T, n_mels) float32 log-mel from host C (runtime SoT)."""
+    model_json = ROOT / "export/ci-smoke/model.json"
+    return mel_features_c(wav_path, model_json)
 
 
 def frame_viseme_ids(

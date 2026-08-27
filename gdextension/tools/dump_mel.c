@@ -90,8 +90,14 @@ static int load_wav_mono_f32(const char *path, float **out, int *out_n)
 
 int main(int argc, char **argv)
 {
+	int power_only = 0;
+	if (argc >= 2 && strcmp(argv[1], "--power") == 0) {
+		power_only = 1;
+		argc--;
+		argv++;
+	}
 	if (argc != 3) {
-		fprintf(stderr, "usage: %s model.json audio.wav\n", argv[0]);
+		fprintf(stderr, "usage: %s [--power] model.json audio.wav\n", argv[0]);
 		return 2;
 	}
 
@@ -131,7 +137,15 @@ int main(int argc, char **argv)
 		return 1;
 	}
 	size_t nframes = 0;
-	if (mel_spectrogram_process(pcm, (size_t)ns, mel, &nframes) < 0) {
+	if (power_only) {
+		if (mel_spectrogram_process_power(pcm, (size_t)ns, mel, &nframes) < 0) {
+			fprintf(stderr, "mel_spectrogram_process_power failed\n");
+			free(mel);
+			free(pcm);
+			mel_spectrogram_free();
+			return 1;
+		}
+	} else if (mel_spectrogram_process(pcm, (size_t)ns, mel, &nframes) < 0) {
 		fprintf(stderr, "mel_spectrogram_process failed\n");
 		free(mel);
 		free(pcm);

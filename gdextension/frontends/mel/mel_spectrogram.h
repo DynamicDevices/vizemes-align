@@ -84,6 +84,10 @@ int mel_spectrogram_process_frame(const float *audio, float *mel_out);
 int mel_spectrogram_process(const float *audio, size_t num_samples,
                             float *mel_out, size_t *num_frames_out);
 
+/** Linear mel power (no dB). Pair with batch dB in mel_spectrogram_process(). */
+int mel_spectrogram_process_power(const float *audio, size_t num_samples,
+                                  float *mel_out, size_t *num_frames_out);
+
 /**
  * Get config values (e.g. n_mels for output buffer sizing).
  */
