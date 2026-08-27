@@ -45,11 +45,16 @@ Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` 
 
 Headless Godot (both GDExtensions): `bash godot-demo/tools/godot_mel_smoke.sh`
 
-**Julian Nix one-liner** (builds MelFrontend + OnnxLoader, then smokes):
+**Julian Nix one-liner** (builds MelFrontend + OnnxLoader via Godot **4.6** MS-ORT, then smokes):
 
 ```bash
 bash godot-demo/tools/julian_vizemes_smoke.sh
 ```
+
+That script calls sibling `godot-onnx-loader/tools/godot_46_ms_ort.sh` (the path that
+already prints `GODOT_46_MS_ORT_SMOKE_OK`). Do **not** rely on bare
+`nix develop` `GODOT_BIN` from godot-onnx-loader for vizemes — that shell still
+pins nixpkgs Godot **4.5.1**.
 
 NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
 
