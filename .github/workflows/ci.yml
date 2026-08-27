@@ -5,11 +5,21 @@ on:
     branches: [master, main]
   pull_request:
 
+env:
+  ORT_VER: "1.20.1"
+  ORT_ROOT: /tmp/onnxruntime-linux-x64-1.20.1
+
 jobs:
   scripts-and-export:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
 
       - name: bash -n scripts
         run: |
@@ -35,10 +45,6 @@ jobs:
           out=$(HOME=/tmp/vizemes-ci-home PATH=/usr/bin:/bin bash scripts/resolve_micromamba.sh)
           test "$out" = "/tmp/vizemes-ci-home/micromamba/bin/micromamba"
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-
       - name: install python deps
         run: pip install -r requirements.txt
 
@@ -53,27 +59,61 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Capped smoke → ONNX for Julian to download (ubuntu; not NixOS /run tmpfs).
   smoke-onnx:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            requirements-train.txt
+
+      - name: Decide whether to retrain smoke ONNX
+        id: train
+        run: |
+          set -euo pipefail
+          RETRAIN=0
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            RETRAIN=1
+          elif [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" == "refs/heads/master" ]]; then
+            if git rev-parse HEAD~1 >/dev/null 2>&1 && ! git diff --name-only HEAD~1 HEAD | grep -qE \
+              '^(scripts/(train_viseme_smoke|build_train_tensors|build_demo_inputs|ci_test_export_fixture)\.py|requirements-train\.txt|data/tensors/)'; then
+              RETRAIN=0
+            else
+              RETRAIN=1
+            fi
+          else
+            BASE="${{ github.event.pull_request.base.sha }}"
+            if git diff --name-only "$BASE"...HEAD | grep -qE \
+              '^(scripts/(train_viseme_smoke|build_train_tensors|build_demo_inputs|ci_test_export_fixture)\.py|requirements-train\.txt|data/tensors/)'; then
+              RETRAIN=1
+            fi
+          fi
+          echo "retrain=$RETRAIN" >> "$GITHUB_OUTPUT"
+          echo "retrain=$RETRAIN"
 
       - name: install train deps (CPU torch)
+        if: steps.train.outputs.retrain == '1'
         run: |
           set -euo pipefail
           pip install -r requirements.txt
           pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install soundfile onnx onnxscript
 
+      - name: install sanity deps only
+        if: steps.train.outputs.retrain != '1'
+        run: pip install -r requirements.txt onnx onnxruntime
+
       - name: build tensors + export smoke ONNX
+        if: steps.train.outputs.retrain == '1'
         run: |
           set -euo pipefail
-          # Same tiny fixture as Godot export CI (no LibriSpeech on runner).
           python scripts/ci_test_export_fixture.py
           python scripts/build_train_tensors.py --subset ci-fixture
           python scripts/train_viseme_smoke.py --subset ci-fixture --epochs 40 --hidden 64 \
@@ -83,6 +123,12 @@ jobs:
           test -f export/ci-smoke/model.json
           test -f export/ci-smoke/demo_inputs.csv
           python -c 'import json; print("best_val_acc", json.load(open("export/ci-smoke/model.json"))["best_val_acc"])'
+
+      - name: sanity check committed smoke ONNX
+        run: |
+          set -euo pipefail
+          test -f export/ci-smoke/model.onnx
+          test -f export/ci-smoke/demo_inputs.csv
           python scripts/sanity_check_onnx.py | tee /tmp/onnx-sanity.txt
           grep -q 'hit_rate=' /tmp/onnx-sanity.txt
 
@@ -94,15 +140,33 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  # Shared OnnxLoader (godot-onnx-loader) + host C runtime Makefile smokes.
   inference-smoke:
     runs-on: ubuntu-latest
+    env:
+      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
+      LOADER_CACHE: ${{ github.workspace }}/.loader-cache
+      LOADER_SCONS_CACHE: ${{ github.workspace }}/.loader-scons-cache
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+          cache: pip
+
+      - name: Restore scons + ORT cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            .scons-cache
+            .loader-cache
+            .loader-scons-cache
+            /tmp/onnxruntime-linux-x64-1.20.1
+          key: vizemes-infer-${{ runner.os }}-${{ hashFiles('gdextension/**', 'export/ci-smoke/model.onnx') }}-loader-main
+          restore-keys: |
+            vizemes-infer-${{ runner.os }}-
 
       - name: install scons
         run: pip install scons
@@ -110,33 +174,36 @@ jobs:
       - name: fetch ONNX Runtime CPU (linux-x64)
         run: |
           set -euo pipefail
-          VER=1.20.1
-          curl -fsSL -o /tmp/ort.tgz \
-            "https://github.com/microsoft/onnxruntime/releases/download/v${VER}/onnxruntime-linux-x64-${VER}.tgz"
-          tar -C /tmp -xzf /tmp/ort.tgz
-          echo "ORT_ROOT=/tmp/onnxruntime-linux-x64-${VER}" >> "$GITHUB_ENV"
-          echo "ORT_LIB=/tmp/onnxruntime-linux-x64-${VER}/lib" >> "$GITHUB_ENV"
+          if [[ ! -f "${ORT_ROOT}/lib/libonnxruntime.so.1" ]]; then
+            curl -fsSL -o /tmp/ort.tgz \
+              "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-x64-${ORT_VER}.tgz"
+            tar -C /tmp -xzf /tmp/ort.tgz
+          fi
+          echo "ORT_LIB=${ORT_ROOT}/lib" >> "$GITHUB_ENV"
 
-      - name: checkout godot-onnx-loader
+      - name: checkout or update godot-onnx-loader
         run: |
           set -euo pipefail
-          git clone --depth 1 --recurse-submodules \
-            https://github.com/DynamicDevices/godot-onnx-loader.git /tmp/godot-onnx-loader
+          if [[ -d "$LOADER_CACHE/.git" ]]; then
+            git -C "$LOADER_CACHE" fetch --depth 1 origin main
+            git -C "$LOADER_CACHE" checkout FETCH_HEAD
+            git -C "$LOADER_CACHE" submodule update --init --recursive
+          else
+            git clone --depth 1 --recurse-submodules \
+              https://github.com/DynamicDevices/godot-onnx-loader.git "$LOADER_CACHE"
+          fi
 
       - name: godot-onnx-loader scons smoke-csv
         run: |
           set -euo pipefail
           export LIBRARY_PATH="${ORT_LIB}${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          cd /tmp/godot-onnx-loader
-          git fetch --depth 1 origin main
-          git checkout FETCH_HEAD
-          scons platform=linux target=template_debug
+          export SCONS_CACHE="$LOADER_SCONS_CACHE"
+          cd "$LOADER_CACHE"
+          scons -j"$(nproc)" platform=linux target=template_debug smoke-csv smoke-dlopen-ort
           test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
           test -f addons/onnx_loader/bin/libonnxruntime.so.1
           ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q libonnxruntime
           ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q 'libstdc++'
-          scons platform=linux target=template_debug smoke-csv
-          scons platform=linux target=template_debug smoke-dlopen-ort
           grep -q 'ONNX_LOADER_CSV_SMOKE_OK' /tmp/onnx-loader-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/onnx-loader-smoke-csv.txt
           grep -q 'ONNX_DLOPEN_TEARDOWN_OK' /tmp/onnx-loader-smoke-dlopen.txt
@@ -154,29 +221,28 @@ jobs:
       - name: vizemes MelFrontend GDExtension (scons, no ORT)
         run: |
           set -euo pipefail
-          git submodule update --init gdextension/godot-cpp
           cd gdextension
-          scons platform=linux target=template_debug
+          scons -j"$(nproc)" platform=linux target=template_debug
           test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
 
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
-    # Runner workdir lives on /run tmpfs (2G). Keep pip/nix caches on disk.
     env:
       PIP_CACHE_DIR: /var/tmp/github-runner-cache/pip
       XDG_CACHE_HOME: /var/tmp/github-runner-cache/xdg
       TMPDIR: /var/tmp
+      LOADER_CLONE: /var/tmp/godot-onnx-loader-ci
+      SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
     steps:
       - uses: actions/checkout@v7
 
       - name: Prove NixOS runner + flake shell
         run: |
           set -euo pipefail
-          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME"
+          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME" "$SCONS_CACHE"
           cat /etc/os-release | head -5
           nix --version
           command -v steam-run
-          # Non-login bash: login (-l) resets PATH and drops flake shellHook .venv.
           nix develop --command bash -c 'python3 --version; ffmpeg -version | head -1'
 
       - name: export_godot_package on fixture (nix shell)
@@ -187,20 +253,24 @@ jobs:
       - name: godot-onnx-loader Nix Godot csv_smoke (Julian path)
         run: |
           set -euo pipefail
-          rm -rf /var/tmp/godot-onnx-loader-ci
-          git clone --depth 1 --recurse-submodules \
-            https://github.com/DynamicDevices/godot-onnx-loader.git /var/tmp/godot-onnx-loader-ci
-          cd /var/tmp/godot-onnx-loader-ci
+          if [[ -d "$LOADER_CLONE/.git" ]]; then
+            git -C "$LOADER_CLONE" fetch --depth 1 origin main
+            git -C "$LOADER_CLONE" checkout FETCH_HEAD
+            git -C "$LOADER_CLONE" submodule update --init --recursive
+          else
+            git clone --depth 1 --recurse-submodules \
+              https://github.com/DynamicDevices/godot-onnx-loader.git "$LOADER_CLONE"
+          fi
+          cd "$LOADER_CLONE"
           rm -rf addons/onnx_loader/bin/libonnxruntime.so*
           nix develop --command bash -c '
             set -euo pipefail
-            git submodule update --init --recursive
-            scons platform=linux target=template_debug
+            export SCONS_CACHE='"$SCONS_CACHE"'
+            scons -j"$(nproc)" platform=linux target=template_debug smoke-dlopen-ort
             so=addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
             test -f "$so"
             ! ldd "$so" | grep -q libonnxruntime
             ! ldd "$so" | grep -q libstdc++
-            scons platform=linux target=template_debug smoke-dlopen-ort
             bash tools/smoke_bad_model.sh
             bash tools/godot_csv_smoke.sh
           '
