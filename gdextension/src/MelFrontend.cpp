@@ -2,6 +2,9 @@
 
 #include <godot_cpp/core/class_db.hpp>
 
+#include "mel_spectrogram.h"
+
+#include <cmath>
 #include <cstring>
 #include <cstdlib>
 
@@ -33,6 +36,7 @@ void MelFrontend::_bind_methods()
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
 	ClassDB::bind_method(D_METHOD("push_pcm_contexts", "pcm"), &MelFrontend::push_pcm_contexts);
+	ClassDB::bind_method(D_METHOD("build_utterance_contexts", "pcm"), &MelFrontend::build_utterance_contexts);
 	ClassDB::bind_method(D_METHOD("get_input_features"), &MelFrontend::get_input_features);
 	ClassDB::bind_method(D_METHOD("get_context_frames"), &MelFrontend::get_context_frames);
 	ClassDB::bind_method(D_METHOD("get_n_mels"), &MelFrontend::get_n_mels);
@@ -175,6 +179,77 @@ Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
 	}
 
 	::free(frame);
+	return out;
+}
+
+Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
+{
+	Array out;
+	if (!configured || pcm.size() == 0) {
+		return out;
+	}
+
+	const int nm = meta.n_mels;
+	const int ctx = meta.context_frames;
+	const int n_in = (int)pcm.size();
+
+	size_t max_frames = (size_t)n_in / (size_t)meta.hop_length_samples + 16;
+	float *mel = (float *)calloc(max_frames * (size_t)nm, sizeof(float));
+	if (!mel) {
+		return out;
+	}
+
+	size_t nframes = 0;
+	if (mel_spectrogram_process(pcm.ptr(), (size_t)n_in, mel, &nframes) < 0 || nframes < (size_t)ctx) {
+		::free(mel);
+		return out;
+	}
+
+	float *mu = (float *)calloc((size_t)nm, sizeof(float));
+	float *sd = (float *)calloc((size_t)nm, sizeof(float));
+	if (!mu || !sd) {
+		::free(mu);
+		::free(sd);
+		::free(mel);
+		return out;
+	}
+	for (int j = 0; j < nm; j++) {
+		double sum = 0.0;
+		double sum2 = 0.0;
+		for (size_t t = 0; t < nframes; t++) {
+			double v = (double)mel[t * (size_t)nm + (size_t)j];
+			sum += v;
+			sum2 += v * v;
+		}
+		mu[j] = (float)(sum / (double)nframes);
+		double var = sum2 / (double)nframes - (double)mu[j] * (double)mu[j];
+		if (var < 0.0) {
+			var = 0.0;
+		}
+		sd[j] = (float)sqrt(var) + 1e-5f;
+	}
+	for (size_t t = 0; t < nframes; t++) {
+		for (int j = 0; j < nm; j++) {
+			size_t idx = t * (size_t)nm + (size_t)j;
+			mel[idx] = (mel[idx] - mu[j]) / sd[j];
+		}
+	}
+	::free(mu);
+	::free(sd);
+
+	for (size_t i = (size_t)ctx - 1; i < nframes; i++) {
+		PackedFloat32Array flat;
+		flat.resize(meta.input_features);
+		for (int f = 0; f < ctx; f++) {
+			size_t frame_idx = i - (size_t)ctx + 1 + (size_t)f;
+			for (int j = 0; j < nm; j++) {
+				flat[f * nm + j] = mel[frame_idx * (size_t)nm + (size_t)j];
+			}
+		}
+		out.push_back(flat);
+	}
+
+	::free(mel);
 	return out;
 }
 

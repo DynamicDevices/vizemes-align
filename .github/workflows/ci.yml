@@ -155,11 +155,15 @@ jobs:
             tar -C /tmp -xzf /tmp/ort.tgz
           fi
 
-      - name: gdextension host make smoke-csv (C mel + ORT, no Godot .so)
+      - name: gdextension host mel parity + make smoke-csv (C mel + ORT)
         run: |
           set -euo pipefail
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/demo_inputs.csv
+          test -f export/ci-smoke/ci-fixture.wav
+          pip install -q numpy
+          make -C gdextension dump-mel
+          python3 scripts/compare_mel_parity.py export/ci-smoke/ci-fixture.wav
           cd gdextension
           make ORT_ROOT="$ORT_ROOT" smoke-csv | tee /tmp/vizemes-smoke-csv.txt
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
