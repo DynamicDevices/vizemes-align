@@ -3,11 +3,24 @@
 # Nix: run inside godot-onnx-loader `nix develop` (sets GODOT_BIN + ONNX_ORT_BIN).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-GODOT="${GODOT_BIN:-${GODOT:-${HOME}/Downloads/Godot_v4.6.1-stable_linux.x86_64}}"
+GODOT="${GODOT_BIN:-${GODOT:-}}"
+if [[ -z "$GODOT" || ! -x "$GODOT" ]]; then
+	for candidate in "${HOME}/Downloads/Godot_v4.6.1-stable_linux.x86_64" godot4 godot; do
+		if [[ "$candidate" == /* ]]; then
+			if [[ -x "$candidate" ]]; then
+				GODOT="$candidate"
+				break
+			fi
+		elif G="$(command -v "$candidate" 2>/dev/null)" && [[ -x "$G" ]]; then
+			GODOT="$G"
+			break
+		fi
+	done
+fi
 EXT_LIST="$ROOT/.godot/extension_list.cfg"
 
 if [[ ! -x "$GODOT" ]]; then
-	echo "GODOT_BIN must point at Godot 4.x" >&2
+	echo "GODOT_BIN must point at Godot 4.x (try: nix develop ../godot-onnx-loader --command bash godot-demo/tools/godot_mel_smoke.sh)" >&2
 	exit 1
 fi
 
