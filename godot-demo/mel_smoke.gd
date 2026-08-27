@@ -92,5 +92,10 @@ func _ready() -> void:
 		return
 
 	print("mel_contexts=%d hit_rate=%d/%d" % [contexts.size(), hr.hits, hr.n])
+	# Soft floor for ci-fixture smoke model; richer test-clean should beat this.
+	if float(hr.hits) / float(hr.n) < 0.5:
+		push_error("hit_rate below 50% — check mel/ONNX parity or retrain")
+		get_tree().quit(1)
+		return
 	print("GODOT_MEL_ONNX_SMOKE_OK")
 	get_tree().quit(0)

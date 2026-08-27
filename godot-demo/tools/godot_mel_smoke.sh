@@ -21,9 +21,18 @@ EXT_LIST="$ROOT/.godot/extension_list.cfg"
 MEL_SO="$ROOT/../gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so"
 
 if [[ ! -x "$GODOT" ]]; then
-	echo "GODOT_BIN must point at Godot 4.x (try: nix develop ../godot-onnx-loader --command bash godot-demo/tools/godot_mel_smoke.sh)" >&2
+	echo "GODOT_BIN must point at Godot 4.6+ (try: ~/Downloads/Godot_v4.6.1-stable_linux.x86_64 or godot-onnx-loader tools/godot_46_ms_ort.sh)" >&2
 	exit 1
 fi
+
+GODOT_VER="$("$GODOT" --version 2>/dev/null | head -n1 || true)"
+case "$GODOT_VER" in
+	*4.6*|*4.7*|*4.8*|*4.9*) ;;
+	*)
+		echo "Godot 4.6+ required (got: ${GODOT_VER:-unknown}). Set GODOT_BIN to a 4.6 binary." >&2
+		exit 1
+		;;
+esac
 
 if [[ ! -f "$MEL_SO" ]]; then
 	echo "MelFrontend .so missing: $MEL_SO" >&2
