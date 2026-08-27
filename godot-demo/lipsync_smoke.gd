@@ -1,6 +1,7 @@
 extends Node
 ## End-to-end lipsync shape: wav → mel → ONNX → OVR visemes → VisemeSystemStub.set_visemes.
 
+const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 
 
@@ -10,19 +11,8 @@ func _ready() -> void:
 	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
 	var wav_path := root.path_join("export/ci-smoke/ci-fixture.wav")
 
-	var id_to_name: Array = VisemeUtils.load_id_to_name(json_path)
-	if id_to_name.is_empty():
-		push_error("model.json visemes missing")
-		get_tree().quit(1)
-		return
-
-	var mel = ClassDB.instantiate("MelFrontend")
-	var loader = ClassDB.instantiate("OnnxLoader")
-	if mel == null or loader == null:
-		push_error("MelFrontend or OnnxLoader missing")
-		get_tree().quit(1)
-		return
-	if not mel.configure_from_json(json_path) or not loader.load_model(onnx_path):
+	var pipe = VisemePipelineScript.new()
+	if not pipe.setup(json_path, onnx_path):
 		get_tree().quit(1)
 		return
 
@@ -31,23 +21,15 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	var contexts: Array = mel.build_utterance_contexts(pcm)
-	if contexts.is_empty():
-		push_error("no mel contexts")
-		get_tree().quit(1)
-		return
-
 	var stub = $VisemeSystemStub
 	var frames := 0
-	for ctx_variant in contexts:
+	for ctx_variant in pipe.mel.build_utterance_contexts(pcm):
 		var ctx: PackedFloat32Array = ctx_variant
-		var logits: PackedFloat32Array = loader.predict(ctx)
-		if logits.is_empty():
+		var ovr := pipe.predict_ovr(ctx)
+		if ovr.is_empty():
 			push_error("predict failed")
 			get_tree().quit(1)
 			return
-		var w := VisemeUtils.softmax(logits)
-		var ovr := VisemeUtils.mlp_to_ovr(w, id_to_name)
 		stub.set_visemes(ovr)
 		frames += 1
 

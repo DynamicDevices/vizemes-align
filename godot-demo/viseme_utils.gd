@@ -34,6 +34,32 @@ static func load_wav_pcm(path: String) -> PackedFloat32Array:
 	return pcm
 
 
+static func stereo_to_mono(buffer: PackedVector2Array) -> PackedFloat32Array:
+	var pcm := PackedFloat32Array()
+	pcm.resize(buffer.size())
+	for i in buffer.size():
+		pcm[i] = (buffer[i].x + buffer[i].y) * 0.5
+	return pcm
+
+
+static func resample_pcm(pcm: PackedFloat32Array, from_rate: int, to_rate: int) -> PackedFloat32Array:
+	if from_rate <= 0 or to_rate <= 0 or pcm.is_empty():
+		return PackedFloat32Array()
+	if from_rate == to_rate:
+		return pcm
+	var out_len := maxi(1, int(round(float(pcm.size()) * float(to_rate) / float(from_rate))))
+	var out := PackedFloat32Array()
+	out.resize(out_len)
+	for i in out_len:
+		var src_pos := float(i) * float(from_rate) / float(to_rate)
+		var idx := int(src_pos)
+		var frac := src_pos - float(idx)
+		var a := pcm[mini(idx, pcm.size() - 1)]
+		var b := pcm[mini(idx + 1, pcm.size() - 1)]
+		out[i] = a + (b - a) * frac
+	return out
+
+
 static func softmax(logits: PackedFloat32Array) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(logits.size())
