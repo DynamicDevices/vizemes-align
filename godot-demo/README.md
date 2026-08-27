@@ -105,10 +105,13 @@ collapsed to trained viseme **boxes** on the same axis.
 
 ```bash
 python3 scripts/export_viseme_timeline.py --subset ci-fixture
-# later: --subset test-clean --stem <utt_id>   # aim for ~10s clips
+# real speech (~10s LibriSpeech example; after prepare+MFA+tensors):
+#   bash scripts/run_one_stem_timeline.sh 1320-122617-0010
+#   # or: python3 scripts/export_viseme_timeline.py --subset test-clean --stem <utt_id>
 ```
 
 Open `viseme_timeline.tscn` and run (F6). Marker: `GODOT_VISEME_TIMELINE_OK`.
+Current committed demo JSON uses LibriSpeech **1320-122617-0010** (~10s) with MFA boxes.
 
 ### Live mic (`mic_lipsync.tscn`)
 
