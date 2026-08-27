@@ -3,11 +3,13 @@ class_name VisemePipeline
 ## MelFrontend → OnnxLoader → OVR visemes (shared by lipsync + mic demos).
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const VisemeTarget := preload("res://viseme_target.gd")
 
 var mel: Object
 var loader: Object
 var id_to_name: Array = []
 var target_rate: int = 16000
+var last_ovr: PackedFloat32Array = PackedFloat32Array()
 
 
 func setup(json_path: String, onnx_path: String) -> bool:
@@ -47,12 +49,13 @@ func push_pcm_to_stub(pcm: PackedFloat32Array, stub: Object) -> int:
 		var ovr := predict_ovr(ctx)
 		if ovr.is_empty():
 			continue
-		stub.set_visemes(ovr)
+		VisemeTarget.feed(stub, ovr)
+		last_ovr = ovr
 		frames += 1
 	return frames
 
 
-func feed_pcm_mono_16k(pcm: PackedFloat32Array, stub: Object) -> int:
+func feed_pcm_mono_16k(pcm: PackedFloat32Array, target: Object) -> int:
 	if pcm.is_empty():
 		return 0
-	return push_pcm_to_stub(pcm, stub)
+	return push_pcm_to_stub(pcm, target)

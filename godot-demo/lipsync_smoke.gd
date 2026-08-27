@@ -1,8 +1,9 @@
 extends Node
-## End-to-end lipsync shape: wav → mel → ONNX → OVR visemes → VisemeSystemStub.set_visemes.
+## End-to-end lipsync shape: wav → mel → ONNX → OVR → VisemeSystem (or Stub).
 
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
+const VisemeTarget := preload("res://viseme_target.gd")
 
 
 func _ready() -> void:
@@ -21,8 +22,13 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	var stub = $VisemeSystemStub
+	var target := VisemeTarget.resolve(self)
+	if target == null:
+		get_tree().quit(1)
+		return
+
 	var frames := 0
+	var last_ovr := PackedFloat32Array()
 	for ctx_variant in pipe.mel.build_utterance_contexts(pcm):
 		var ctx: PackedFloat32Array = ctx_variant
 		var ovr := pipe.predict_ovr(ctx)
@@ -30,18 +36,22 @@ func _ready() -> void:
 			push_error("predict failed")
 			get_tree().quit(1)
 			return
-		stub.set_visemes(ovr)
+		VisemeTarget.feed(target, ovr)
+		last_ovr = ovr
 		frames += 1
 
-	if frames <= 0 or stub.call_count != frames:
-		push_error("viseme feed mismatch")
-		get_tree().quit(1)
-		return
+	var call_count := int(target.get("call_count")) if "call_count" in target else frames
+	if frames <= 0 or call_count < frames:
+		# Real VisemeSystem has no call_count — trust frames > 0
+		if target.name != "VisemeSystem" or frames <= 0:
+			push_error("viseme feed mismatch")
+			get_tree().quit(1)
+			return
 
-	var top := VisemeUtils.argmax(stub.last_ovr)
+	var top := VisemeUtils.argmax(last_ovr)
 	print(
-		"lipsync_frames=%d ovr_top=%s weight=%.4f" % [
-			frames, VisemeUtils.OVR_NAMES[top], stub.last_ovr[top]
+		"lipsync_frames=%d ovr_top=%s weight=%.4f target=%s" % [
+			frames, VisemeUtils.OVR_NAMES[top], last_ovr[top], target.name
 		]
 	)
 	print("GODOT_LIPSYNC_SMOKE_OK")

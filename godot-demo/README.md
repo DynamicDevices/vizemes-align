@@ -26,15 +26,17 @@ git submodule update --init --recursive
 scons platform=linux target=template_debug
 ```
 
-## Godot 4.5+
+## Godot 4.6+
 
-Open `godot-demo/`:
+Open `godot-demo/` (minimum **Godot 4.6** — MelFrontend `compatibility_minimum` and
+project features are 4.6). On Nix, prefer sibling `godot-onnx-loader` Godot 4.6 MS-ORT
+path (`bash tools/godot_46_ms_ort.sh`) or a stock 4.6 editor binary.
 
 | Scene | Expect |
 |-------|--------|
 | `csv_smoke.tscn` | `GODOT_ONNX_CSV_SMOKE_OK` |
 | `mel_smoke.tscn` | `GODOT_MEL_ONNX_SMOKE_OK` + `hit_rate=` (wav → mel → ONNX vs demo_inputs) |
-| `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → `VisemeSystemStub.set_visemes`) |
+| `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → VisemeSystem or Stub) |
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
 | `seek_probe.tscn` | `GODOT_SEEK_PROBE_OK` — seek times vs alignment; mel L2 vs training path (editor OK) |
 | `mic_lipsync.tscn` | Live mic GUI demo (not headless) — `AudioStreamMicrophone` → streaming mel → visemes |
@@ -72,8 +74,27 @@ Headless marker: `GODOT_SEEK_PROBE_OK` (also run by `godot_mel_smoke.sh`).
 ### Live mic (`mic_lipsync.tscn`)
 
 Open in Godot (not headless): captures mic via `AudioEffectCapture`, resamples to 16 kHz,
-feeds `push_pcm_contexts`, drives `VisemeSystemStub`. Swap stub for goatchurchprime/lipsync
-`VisemeSystem` in production.
+feeds `push_pcm_contexts`, drives `VisemeSystem` when present else `VisemeSystemStub`.
+
+### Real VisemeSystem (optional)
+
+Default scenes use `VisemeSystemStub`. To drive [goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync)
+`VisemeSystem` instead: instance that node as a child named **`VisemeSystem`**
+(sibling to or replacing the stub). `VisemeTarget.resolve` prefers it when present.
+Weights are OVR order including trailing `LA` (always 0 from our MLP).
+
+### Hit-rate / richer data
+
+CI smokes use `ci-fixture`. For LibriSpeech `test-clean` after MFA + tensors:
+
+```bash
+python3 scripts/build_train_tensors.py --subset test-clean
+python3 scripts/train_viseme_smoke.py --subset test-clean --context 20 --export-onnx export/ci-smoke/model.onnx
+python3 scripts/build_demo_inputs.py --subset test-clean
+python3 scripts/export_seek_probe.py --subset test-clean --stem <utt_id> --seeks 8
+```
+
+Then re-run `mel_smoke` / `seek_probe` for hit-rate on real speech.
 
 ## Note
 

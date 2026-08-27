@@ -4,7 +4,7 @@ config_version=5
 [application]
 config/name="VizemesOnnxLoaderDev"
 run/main_scene="res://csv_smoke.tscn"
-config/features=PackedStringArray("4.5")
+config/features=PackedStringArray("4.6")
 
 [native_extensions]
 paths=["res://addons/onnx_loader/onnx_loader.gdextension", "res://addons/vizemes_mel/vizemes_mel.gdextension"]

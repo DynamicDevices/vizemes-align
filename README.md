@@ -2,6 +2,8 @@
 
 Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map phonemes → coded visemes, and export a **Godot-readable** package (audio + time-aligned viseme labels). Spectrogram / ONNX training stays on the Godot feature path (see Telegram Vizemes thread).
 
+**Godot minimum: 4.6** (`godot-demo/` + MelFrontend GDExtension). Sibling [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader) supplies OnnxLoader; on Nix use its Godot 4.6 MS-ORT path when needed.
+
 Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
 

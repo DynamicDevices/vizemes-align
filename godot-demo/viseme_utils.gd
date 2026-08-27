@@ -3,7 +3,7 @@ class_name VisemeUtils
 ## MLP softmax → OVR viseme weights ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync) shape).
 
 const OVR_NAMES: Array[String] = [
-	"sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U"
+	"sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U", "LA"
 ]
 
 const MODEL_NAME_TO_OVR: Dictionary = {
