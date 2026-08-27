@@ -22,7 +22,7 @@ own sidecar contract (`export/ci-smoke/model.json`).
 | `src/viseme_runtime_stub.c` | API stub when built without ORT |
 | `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |
 | `tools/smoke_csv.c` | Host smoke: all `demo_inputs.csv` rows (≡ Python table) |
-| `../godot-demo/` | Godot 4.3 dev project — **OnnxLoader** + **MelFrontend** + smokes |
+| `../godot-demo/` | Godot 4.5+ dev project — **OnnxLoader** + **MelFrontend** + smokes |
 | `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |
 
@@ -68,7 +68,7 @@ See [`../godot-demo/README.md`](../godot-demo/README.md):
 ```bash
 git clone --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git
 cd godot-onnx-loader && nix develop && scons platform=linux target=template_debug
-# Open vizemes-align/godot-demo/ in Godot 4.3 → csv_smoke.tscn → GODOT_ONNX_CSV_SMOKE_OK
+Open `../godot-demo/` in Godot 4.5+ → `mel_smoke.tscn` / `csv_smoke.tscn`.
 ```
 
 Host CSV parity (no Godot): `scons smoke-csv` in **godot-onnx-loader**.
