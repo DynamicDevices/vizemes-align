@@ -221,7 +221,7 @@ jobs:
       - name: MelFrontend GDExtension scons (Julian / godot-demo path)
         run: |
           set -euo pipefail
-          nix develop --command bash -c '
+          nix develop .#train --command bash -c '
             set -euo pipefail
             export SCONS_CACHE='"$MEL_SCONS_CACHE"'
             cd gdextension
