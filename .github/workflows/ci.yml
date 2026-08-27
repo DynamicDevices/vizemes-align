@@ -140,32 +140,11 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  # Host C mel + ORT only (~10s). MelFrontend Godot .so builds on nixos-self-hosted.
   inference-smoke:
     runs-on: ubuntu-latest
-    env:
-      SCONS_CACHE: ${{ github.workspace }}/.scons-cache
     steps:
       - uses: actions/checkout@v7
-        with:
-          submodules: recursive
-
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.12"
-          cache: pip
-
-      - name: Restore scons + ORT cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            .scons-cache
-            /tmp/onnxruntime-linux-x64-1.20.1
-          key: mel-scons-${{ runner.os }}-${{ hashFiles('gdextension/SConstruct', 'gdextension/custom.py', 'gdextension/src/**', 'gdextension/godot-cpp/**') }}
-          restore-keys: |
-            mel-scons-${{ runner.os }}-
-
-      - name: install scons
-        run: pip install scons
 
       - name: fetch ONNX Runtime CPU (linux-x64)
         run: |
@@ -186,13 +165,6 @@ jobs:
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 
-      - name: vizemes MelFrontend GDExtension (scons, no ORT)
-        run: |
-          set -euo pipefail
-          cd gdextension
-          scons -j"$(nproc)" platform=linux target=template_debug
-          test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
-
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     env:
@@ -200,14 +172,17 @@ jobs:
       XDG_CACHE_HOME: /var/tmp/github-runner-cache/xdg
       TMPDIR: /var/tmp
       LOADER_CLONE: /var/tmp/godot-onnx-loader-ci
-      SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
+      LOADER_SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
+      MEL_SCONS_CACHE: /var/tmp/github-runner-cache/scons/vizemes-mel
     steps:
       - uses: actions/checkout@v7
+        with:
+          submodules: recursive
 
       - name: Prove NixOS runner + flake shell
         run: |
           set -euo pipefail
-          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME" "$SCONS_CACHE"
+          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME" "$LOADER_SCONS_CACHE" "$MEL_SCONS_CACHE"
           cat /etc/os-release | head -5
           nix --version
           command -v steam-run
@@ -233,7 +208,7 @@ jobs:
           rm -rf addons/onnx_loader/bin/libonnxruntime.so*
           nix develop --command bash -c '
             set -euo pipefail
-            export SCONS_CACHE='"$SCONS_CACHE"'
+            export SCONS_CACHE='"$LOADER_SCONS_CACHE"'
             scons -j"$(nproc)" platform=linux target=template_debug smoke-dlopen-ort
             so=addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
             test -f "$so"
@@ -241,6 +216,17 @@ jobs:
             ! ldd "$so" | grep -q libstdc++
             bash tools/smoke_bad_model.sh
             bash tools/godot_csv_smoke.sh
+          '
+
+      - name: MelFrontend GDExtension scons (Julian / godot-demo path)
+        run: |
+          set -euo pipefail
+          nix develop --command bash -c '
+            set -euo pipefail
+            export SCONS_CACHE='"$MEL_SCONS_CACHE"'
+            cd gdextension
+            scons -j"$(nproc)" platform=linux target=template_debug
+            test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
 
       - name: Upload Godot export artefact
