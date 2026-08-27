@@ -4,6 +4,7 @@
 #include "sidecar_json.h"
 
 #include <godot_cpp/classes/ref_counted.hpp>
+#include <godot_cpp/variant/array.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/string.hpp>
 
@@ -37,6 +38,8 @@ public:
 	void reset();
 
 	PackedFloat32Array push_pcm(const PackedFloat32Array &pcm);
+	/** All new mel contexts ready after this PCM chunk (streaming / mic path). */
+	Array push_pcm_contexts(const PackedFloat32Array &pcm);
 
 	int get_input_features() const;
 	int get_context_frames() const;

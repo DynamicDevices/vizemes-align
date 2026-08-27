@@ -32,6 +32,7 @@ void MelFrontend::_bind_methods()
 			&MelFrontend::configure_from_json);
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
+	ClassDB::bind_method(D_METHOD("push_pcm_contexts", "pcm"), &MelFrontend::push_pcm_contexts);
 	ClassDB::bind_method(D_METHOD("get_input_features"), &MelFrontend::get_input_features);
 	ClassDB::bind_method(D_METHOD("get_context_frames"), &MelFrontend::get_context_frames);
 	ClassDB::bind_method(D_METHOD("get_n_mels"), &MelFrontend::get_n_mels);
@@ -116,7 +117,16 @@ PackedFloat32Array MelFrontend::build_flat_context() const
 
 PackedFloat32Array MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 {
-	PackedFloat32Array out;
+	Array contexts = push_pcm_contexts(pcm);
+	if (contexts.is_empty()) {
+		return PackedFloat32Array();
+	}
+	return contexts[contexts.size() - 1];
+}
+
+Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
+{
+	Array out;
 	if (!configured || !ops || !ops->process_frame) {
 		return out;
 	}
@@ -160,7 +170,7 @@ PackedFloat32Array MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 		pcm_pending_n -= drop;
 
 		if (mel_filled >= meta.context_frames) {
-			out = build_flat_context();
+			out.push_back(build_flat_context());
 		}
 	}
 
