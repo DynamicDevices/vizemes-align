@@ -42,6 +42,10 @@ scons platform=linux target=template_debug
 Open `../godot-demo/` → run `mel_smoke.tscn` → expect `GODOT_MEL_ONNX_SMOKE_OK`
 (wav → mel context → OnnxLoader). Requires both addons built (OnnxLoader + MelFrontend).
 
+**Streaming vs batch:** `build_utterance_contexts` matches training (center pad + global dB +
+per-utterance normalize). `push_pcm_contexts` uses causal per-chunk normalize for live mic;
+mel padding still differs from batch — use batch path for label parity, streaming for realtime.
+
 ## Target Godot shape ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync))
 
 Demo drives Ready Player Me blendshapes via `VisemeSystem.set_visemes(vv)` with

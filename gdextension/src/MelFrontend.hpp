@@ -22,8 +22,13 @@ class MelFrontend : public RefCounted {
 	float *pcm_pending = nullptr;
 	int pcm_pending_n = 0;
 	int pcm_pending_cap = 0;
+	float *norm_sum = nullptr;
+	float *norm_sum2 = nullptr;
+	int norm_count = 0;
 
 	void clear_buffers();
+	void clear_norm_stats();
+	void normalize_frame_causal(float *mel_frame);
 	void ring_push(const float *mel_frame);
 	PackedFloat32Array build_flat_context() const;
 
@@ -38,7 +43,7 @@ public:
 	void reset();
 
 	PackedFloat32Array push_pcm(const PackedFloat32Array &pcm);
-	/** Streaming chunks (per-frame dB — approximate vs training). */
+	/** Streaming chunks (causal normalize; mel padding differs from batch train path). */
 	Array push_pcm_contexts(const PackedFloat32Array &pcm);
 	/** Full utterance: batch mel + per-utterance normalize (matches train path). */
 	Array build_utterance_contexts(const PackedFloat32Array &pcm);

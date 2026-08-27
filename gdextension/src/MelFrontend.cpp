@@ -27,6 +27,39 @@ void MelFrontend::clear_buffers()
 	pcm_pending = nullptr;
 	pcm_pending_n = 0;
 	pcm_pending_cap = 0;
+	clear_norm_stats();
+}
+
+void MelFrontend::clear_norm_stats()
+{
+	::free(norm_sum);
+	::free(norm_sum2);
+	norm_sum = nullptr;
+	norm_sum2 = nullptr;
+	norm_count = 0;
+}
+
+void MelFrontend::normalize_frame_causal(float *mel_frame)
+{
+	const int nm = meta.n_mels;
+	if (!norm_sum || !norm_sum2 || !mel_frame) {
+		return;
+	}
+	for (int j = 0; j < nm; j++) {
+		norm_sum[j] += mel_frame[j];
+		norm_sum2[j] += mel_frame[j] * mel_frame[j];
+	}
+	norm_count++;
+	const float inv_n = 1.0f / (float)norm_count;
+	for (int j = 0; j < nm; j++) {
+		const float mu = norm_sum[j] * inv_n;
+		float var = norm_sum2[j] * inv_n - mu * mu;
+		if (var < 0.0f) {
+			var = 0.0f;
+		}
+		const float sd = sqrtf(var) + 1e-5f;
+		mel_frame[j] = (mel_frame[j] - mu) / sd;
+	}
 }
 
 void MelFrontend::_bind_methods()
@@ -70,7 +103,9 @@ bool MelFrontend::configure_from_json(const String &model_json_path)
 	mel_ring = (float *)calloc((size_t)meta.context_frames * (size_t)meta.n_mels, sizeof(float));
 	pcm_pending_cap = meta.window_length_samples * 4;
 	pcm_pending = (float *)calloc((size_t)pcm_pending_cap, sizeof(float));
-	if (!mel_ring || !pcm_pending) {
+	norm_sum = (float *)calloc((size_t)meta.n_mels, sizeof(float));
+	norm_sum2 = (float *)calloc((size_t)meta.n_mels, sizeof(float));
+	if (!mel_ring || !pcm_pending || !norm_sum || !norm_sum2) {
 		reset();
 		return false;
 	}
@@ -165,6 +200,7 @@ Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
 			::free(frame);
 			return out;
 		}
+		normalize_frame_causal(frame);
 		ring_push(frame);
 		int drop = hop;
 		if (drop > pcm_pending_n) {

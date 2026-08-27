@@ -35,6 +35,7 @@ Open `godot-demo/`:
 | `csv_smoke.tscn` | `GODOT_ONNX_CSV_SMOKE_OK` |
 | `mel_smoke.tscn` | `GODOT_MEL_ONNX_SMOKE_OK` + `hit_rate=` (wav → mel → ONNX vs demo_inputs) |
 | `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → `VisemeSystemStub.set_visemes`) |
+| `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
 
