@@ -115,7 +115,8 @@ Current committed demo JSON uses LibriSpeech **1320-122617-0010** (~10s) with MF
 
 Editor controls: mouse wheel zoom, middle-drag pan, left-drag select a time region,
 Space/P play selection (or the visible window) via `AudioStreamGenerator`, Esc clear,
-R reset zoom.
+R reset zoom. If `onnx_b` is set in `viseme_timeline.json`, A/B toggle models and D
+toggles the argmax-disagreement ribbon (thinner/fainter curves = model B).
 
 ### Live mic (`mic_lipsync.tscn`)
 

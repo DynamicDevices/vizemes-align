@@ -33,8 +33,15 @@ var _names: Array = []
 var _boxes: Array = []
 ## Each entry: PackedFloat32Array of length n_visemes (softmax at that hop).
 var _series: Array = []
+## Optional second ONNX softmax series for A/B compare (same mel contexts).
+var _series_b: Array = []
+var _label_a := "A"
+var _label_b := "B"
+var _show_a := true
+var _show_b := true
+var _show_disagree := true
 var _status := ""
-var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space/P=play  Esc=clear"
+var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=toggle models  D=disagree  Esc=clear"
 
 var _pcm := PackedFloat32Array()
 var _view_t0 := 0.0
@@ -106,12 +113,15 @@ func _load_and_run() -> int:
 
 	var json_path := root.path_join(str(probe.get("model_json", "export/ci-smoke/model.json")))
 	var onnx_path := root.path_join(str(probe.get("onnx", "export/ci-smoke/model.onnx")))
+	var onnx_b_rel := str(probe.get("onnx_b", ""))
 	var wav_path := root.path_join(str(probe["wav"]))
 	_hop_s = float(probe.get("hop_s", 0.01))
 	_duration_s = float(probe.get("duration_s", 1.0))
 	_context_frames = int(probe.get("context_frames", 20))
 	_names = probe.get("viseme_names", [])
 	_boxes = probe.get("boxes", [])
+	_label_a = str(probe.get("label_a", "A:hidden64"))
+	_label_b = str(probe.get("label_b", "B"))
 
 	var mel = ClassDB.instantiate("MelFrontend")
 	if mel == null:
@@ -144,15 +154,23 @@ func _load_and_run() -> int:
 		push_error(_status)
 		return 1
 
-	_series.clear()
-	for i in contexts.size():
-		var ctx: PackedFloat32Array = contexts[i]
-		var logits: PackedFloat32Array = loader.predict(ctx)
-		if logits.is_empty():
-			_status = "predict failed at window %d" % i
-			push_error(_status)
-			return 1
-		_series.append(VisemeUtils.softmax(logits))
+	_series = _predict_series(loader, contexts)
+	if _series.is_empty():
+		return 1
+
+	_series_b.clear()
+	if not onnx_b_rel.is_empty():
+		var onnx_b_path := root.path_join(onnx_b_rel)
+		if FileAccess.file_exists(onnx_b_path):
+			var loader_b = ClassDB.instantiate("OnnxLoader")
+			if loader_b != null and loader_b.load_model(onnx_b_path):
+				_series_b = _predict_series(loader_b, contexts)
+				if _label_b == "B":
+					_label_b = "B:%s" % onnx_b_rel.get_file()
+			else:
+				push_warning("onnx_b failed to load: %s" % onnx_b_path)
+		else:
+			push_warning("onnx_b missing: %s" % onnx_b_path)
 
 	var t0 := float(_context_frames - 1) * _hop_s
 	var t_end := t0 + float(maxi(0, _series.size() - 1)) * _hop_s
@@ -160,12 +178,29 @@ func _load_and_run() -> int:
 	_view_t0 = 0.0
 	_view_t1 = _duration_s
 
-	_status = "stem=%s windows=%d duration=%.2fs boxes=%d" % [
-		str(probe.get("stem", "?")), _series.size(), _duration_s, _boxes.size()
+	_status = "stem=%s win=%d dur=%.2fs A=%s B=%s" % [
+		str(probe.get("stem", "?")),
+		_series.size(),
+		_duration_s,
+		_label_a,
+		_label_b if not _series_b.is_empty() else "off",
 	]
 	print("viseme_timeline %s" % _status)
 	print("GODOT_VISEME_TIMELINE_OK")
 	return 0
+
+
+func _predict_series(loader, contexts: Array) -> Array:
+	var out: Array = []
+	for i in contexts.size():
+		var ctx: PackedFloat32Array = contexts[i]
+		var logits: PackedFloat32Array = loader.predict(ctx)
+		if logits.is_empty():
+			_status = "predict failed at window %d" % i
+			push_error(_status)
+			return []
+		out.append(VisemeUtils.softmax(logits))
+	return out
 
 
 func _view_span() -> float:
@@ -262,6 +297,18 @@ func _gui_input(event: InputEvent) -> void:
 		elif key.keycode == KEY_R:
 			_view_t0 = 0.0
 			_view_t1 = _duration_s
+			queue_redraw()
+			accept_event()
+		elif key.keycode == KEY_A:
+			_show_a = not _show_a
+			queue_redraw()
+			accept_event()
+		elif key.keycode == KEY_B:
+			_show_b = not _show_b
+			queue_redraw()
+			accept_event()
+		elif key.keycode == KEY_D:
+			_show_disagree = not _show_disagree
 			queue_redraw()
 			accept_event()
 
@@ -423,6 +470,35 @@ func _draw() -> void:
 				Color(1, 1, 1, 0.9)
 			)
 
+	# A/B disagreement ribbon (where argmax differs).
+	if _show_disagree and not _series_b.is_empty():
+		var t_series0_d := float(_context_frames - 1) * _hop_s
+		var n_cmp := mini(_series.size(), _series_b.size())
+		var seg_start := -1.0
+		for i in n_cmp:
+			var t := t_series0_d + float(i) * _hop_s
+			var wa: PackedFloat32Array = _series[i]
+			var wb: PackedFloat32Array = _series_b[i]
+			var disagree := VisemeUtils.argmax(wa) != VisemeUtils.argmax(wb)
+			if disagree and t >= _view_t0 and t <= _view_t1:
+				if seg_start < 0.0:
+					seg_start = t
+			elif seg_start >= 0.0:
+				var x0 := _t_to_x(seg_start)
+				var x1 := _t_to_x(t)
+				draw_rect(
+					Rect2(x0, _plot.position.y + _plot.size.y * 0.22, maxf(1.0, x1 - x0), _plot.size.y * 0.06),
+					Color(1.0, 0.25, 0.25, 0.55)
+				)
+				seg_start = -1.0
+		if seg_start >= 0.0:
+			var x0b := _t_to_x(seg_start)
+			var x1b := _t_to_x(mini(_view_t1, t_series0_d + float(n_cmp - 1) * _hop_s))
+			draw_rect(
+				Rect2(x0b, _plot.position.y + _plot.size.y * 0.22, maxf(1.0, x1b - x0b), _plot.size.y * 0.06),
+				Color(1.0, 0.25, 0.25, 0.55)
+			)
+
 	# Weight curves (clip to view).
 	var curve_top := _plot.position.y + _plot.size.y * 0.28
 	var curve_h := _plot.size.y * 0.68
@@ -434,19 +510,10 @@ func _draw() -> void:
 	n_v = mini(n_v, _names.size() if not _names.is_empty() else n_v)
 
 	var t_series0 := float(_context_frames - 1) * _hop_s
-	for vi in n_v:
-		var col: Color = LINE_COLORS[vi]
-		var pts := PackedVector2Array()
-		for i in _series.size():
-			var t := t_series0 + float(i) * _hop_s
-			if t < _view_t0 - _hop_s or t > _view_t1 + _hop_s:
-				continue
-			var w: PackedFloat32Array = _series[i]
-			var x := _t_to_x(t)
-			var y := curve_top + curve_h * (1.0 - clampf(w[vi], 0.0, 1.0))
-			pts.append(Vector2(x, y))
-		if pts.size() >= 2:
-			draw_polyline(pts, col, 2.0, true)
+	if _show_a:
+		_draw_series_curves(_series, t_series0, n_v, curve_top, curve_h, 2.0, 1.0)
+	if _show_b and not _series_b.is_empty():
+		_draw_series_curves(_series_b, t_series0, n_v, curve_top, curve_h, 1.2, 0.55)
 
 	draw_line(
 		Vector2(_plot.position.x, curve_top + curve_h),
@@ -498,3 +565,58 @@ func _draw() -> void:
 			12,
 			Color(0.85, 0.85, 0.9)
 		)
+	# A/B legend footer
+	var foot_y := legend_y + float(n_v) * 18.0 + 10.0
+	draw_string(
+		ThemeDB.fallback_font,
+		Vector2(legend_x, foot_y),
+		("%s%s" % ["● " if _show_a else "○ ", _label_a]),
+		HORIZONTAL_ALIGNMENT_LEFT,
+		-1,
+		11,
+		Color(0.9, 0.9, 0.95)
+	)
+	if not _series_b.is_empty():
+		draw_string(
+			ThemeDB.fallback_font,
+			Vector2(legend_x, foot_y + 16.0),
+			("%s%s" % ["● " if _show_b else "○ ", _label_b]),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			11,
+			Color(0.75, 0.8, 0.9)
+		)
+		draw_string(
+			ThemeDB.fallback_font,
+			Vector2(legend_x, foot_y + 32.0),
+			("%sdisagree" % ["● " if _show_disagree else "○ "]),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			11,
+			Color(1.0, 0.45, 0.45)
+		)
+
+
+func _draw_series_curves(
+	series: Array,
+	t_series0: float,
+	n_v: int,
+	curve_top: float,
+	curve_h: float,
+	width: float,
+	alpha: float
+) -> void:
+	for vi in n_v:
+		var base: Color = LINE_COLORS[vi]
+		var col := Color(base.r, base.g, base.b, alpha)
+		var pts := PackedVector2Array()
+		for i in series.size():
+			var t := t_series0 + float(i) * _hop_s
+			if t < _view_t0 - _hop_s or t > _view_t1 + _hop_s:
+				continue
+			var w: PackedFloat32Array = series[i]
+			var x := _t_to_x(t)
+			var y := curve_top + curve_h * (1.0 - clampf(w[vi], 0.0, 1.0))
+			pts.append(Vector2(x, y))
+		if pts.size() >= 2:
+			draw_polyline(pts, col, width, true)

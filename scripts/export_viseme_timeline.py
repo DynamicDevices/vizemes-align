@@ -127,6 +127,9 @@ def main() -> int:
         "wav": wav_rel,
         "model_json": "export/ci-smoke/model.json",
         "onnx": "export/ci-smoke/model.onnx",
+        "onnx_b": "",
+        "label_a": "A:hidden64",
+        "label_b": "B",
         "context_frames": int(meta["context_frames"]),
         "hop_s": hop,
         "duration_s": round(duration_s, 4),
@@ -135,9 +138,15 @@ def main() -> int:
         "boxes": boxes,
         "note": (
             "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; "
-            "boxes are MFA phones collapsed to trained viseme labels."
+            "boxes are MFA phones collapsed to trained viseme labels. "
+            "Optional onnx_b overlays a second model (toggle A/B/D in editor)."
         ),
     }
+    # Prefer a thinner sibling model when present (timeline A/B).
+    model_b = ROOT / "export" / "ci-smoke" / "model_b.onnx"
+    if model_b.is_file():
+        out["onnx_b"] = "export/ci-smoke/model_b.onnx"
+        out["label_b"] = "B:hidden16"
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(
