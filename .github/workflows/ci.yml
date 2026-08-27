@@ -165,62 +165,38 @@ jobs:
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 
+  # MelFrontend godot-cpp on Julian's NixOS runner (persistent SCONS_CACHE).
+  # godot-onnx-loader + export fixture have their own CI jobs elsewhere.
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     env:
-      PIP_CACHE_DIR: /var/tmp/github-runner-cache/pip
-      XDG_CACHE_HOME: /var/tmp/github-runner-cache/xdg
       TMPDIR: /var/tmp
-      LOADER_CLONE: /var/tmp/godot-onnx-loader-ci
-      LOADER_SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
       MEL_SCONS_CACHE: /var/tmp/github-runner-cache/scons/vizemes-mel
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Prove NixOS runner + flake shell
+      - name: Detect MelFrontend / flake changes
+        id: mel
         run: |
           set -euo pipefail
-          mkdir -p "$PIP_CACHE_DIR" "$XDG_CACHE_HOME" "$LOADER_SCONS_CACHE" "$MEL_SCONS_CACHE"
-          cat /etc/os-release | head -5
-          nix --version
-          command -v steam-run
-          nix develop --command bash -c 'python3 --version; ffmpeg -version | head -1'
-
-      - name: export_godot_package on fixture (nix shell)
-        run: |
-          set -euo pipefail
-          nix develop --command bash -c 'python3 -c "import textgrid"; python3 scripts/ci_test_export_fixture.py'
-
-      - name: godot-onnx-loader Nix Godot csv_smoke (Julian path)
-        run: |
-          set -euo pipefail
-          if [[ -d "$LOADER_CLONE/.git" ]]; then
-            git -C "$LOADER_CLONE" fetch --depth 1 origin main
-            git -C "$LOADER_CLONE" checkout FETCH_HEAD
-            git -C "$LOADER_CLONE" submodule update --init --recursive
-          else
-            git clone --depth 1 --recurse-submodules \
-              https://github.com/DynamicDevices/godot-onnx-loader.git "$LOADER_CLONE"
+          RUN=1
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            if ! git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD | grep -qE \
+              '^(gdextension/|godot-demo/mel_|flake\.nix|\.github/workflows/ci\.yml)'; then
+              RUN=0
+            fi
           fi
-          cd "$LOADER_CLONE"
-          rm -rf addons/onnx_loader/bin/libonnxruntime.so*
-          nix develop --command bash -c '
-            set -euo pipefail
-            export SCONS_CACHE='"$LOADER_SCONS_CACHE"'
-            scons -j"$(nproc)" platform=linux target=template_debug smoke-dlopen-ort
-            so=addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
-            test -f "$so"
-            ! ldd "$so" | grep -q libonnxruntime
-            ! ldd "$so" | grep -q libstdc++
-            bash tools/smoke_bad_model.sh
-            bash tools/godot_csv_smoke.sh
-          '
+          echo "run=$RUN" >> "$GITHUB_OUTPUT"
+          echo "nixos_mel=$RUN"
 
-      - name: MelFrontend GDExtension scons (Julian / godot-demo path)
+      - name: MelFrontend GDExtension scons (NixOS / Julian path)
+        if: steps.mel.outputs.run == '1'
         run: |
           set -euo pipefail
+          mkdir -p "$MEL_SCONS_CACHE"
+          nix --version
           nix develop .#train --command bash -c '
             set -euo pipefail
             export SCONS_CACHE='"$MEL_SCONS_CACHE"'
@@ -228,11 +204,3 @@ jobs:
             scons -j"$(nproc)" platform=linux target=template_debug
             test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
-
-      - name: Upload Godot export artefact
-        uses: actions/upload-artifact@v7
-        with:
-          name: godot-export-ci-fixture-nixos
-          path: data/export/ci-fixture/
-          if-no-files-found: error
-          retention-days: 14
