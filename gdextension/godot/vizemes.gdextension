@@ -1,8 +1,0 @@
-[configuration]
-entry_symbol = "vizemes_library_init"
-compatibility_minimum = "4.3"
-
-[libraries]
-# Copy built .so next to this file (see demo/bin/) or adjust paths.
-linux.debug.x86_64 = "./libvizemes_onnx.linux.template_debug.x86_64.so"
-linux.release.x86_64 = "./libvizemes_onnx.linux.template_release.x86_64.so"

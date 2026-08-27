@@ -1,0 +1,68 @@
+#!/usr/bin/env python
+"""Build VizemesMel GDExtension — mel PCM → flat context tensor (no ORT).
+
+  git submodule update --init --recursive
+  cd gdextension && scons platform=linux target=template_debug
+"""
+import os
+import sys
+
+from SCons.Script import Default, Dir, SConscript
+
+godot_cpp = Dir("godot-cpp")
+if not godot_cpp.exists() or not os.listdir(str(godot_cpp.srcnode())):
+    print("godot-cpp missing. Run: git submodule update --init --recursive", file=sys.stderr)
+    sys.exit(1)
+
+env = SConscript("godot-cpp/SConstruct")
+
+mel_c = [
+    "frontends/mel/mel_spectrogram.c",
+    "src/mel_frontend.c",
+    "src/sidecar_json.c",
+]
+inc = ["include", "frontends/mel", "src"]
+
+env_c = env.Clone()
+env_c.Append(
+    CCFLAGS=["-std=c11", "-Wall", "-Wextra", "-Werror", "-fPIC"],
+    CPPPATH=inc,
+)
+mel_lib = env_c.StaticLibrary("build/libvizemes_mel_c", mel_c)
+
+godot_sources = [
+    "src/MelFrontend.cpp",
+    "src/register_types.cpp",
+]
+
+env_cpp = env.Clone()
+env_cpp.Append(
+    CXXFLAGS=["-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-fno-gnu-unique"],
+    CPPPATH=inc,
+    LINKFLAGS=["-Wl,-z,noexecstack"],
+)
+if env_cpp["platform"] == "linux":
+    env_cpp.Append(LINKFLAGS=["-static-libgcc", "-static-libstdc++"])
+
+env_cpp.Append(LIBS=[mel_lib, "m"])
+
+libname = "vizemes_mel"
+if env_cpp["platform"] == "macos":
+    library = env_cpp.SharedLibrary(
+        "godot/bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
+            libname,
+            env_cpp["platform"],
+            env_cpp["target"],
+            libname,
+            env_cpp["platform"],
+            env_cpp["target"],
+        ),
+        source=godot_sources,
+    )
+else:
+    library = env_cpp.SharedLibrary(
+        "godot/bin/lib{}{}{}".format(libname, env_cpp["suffix"], env_cpp["SHLIBSUFFIX"]),
+        source=godot_sources,
+    )
+
+Default(library)

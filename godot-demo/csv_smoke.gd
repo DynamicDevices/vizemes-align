@@ -36,6 +36,7 @@ func _ready() -> void:
 		push_error("load_model failed: %s" % onnx_path)
 		get_tree().quit(1)
 		return
+	print("ONNX_LOADER_DIAG ", m.get_diagnostics())
 
 	var nfeat: int = m.get_input_size()
 	var file := FileAccess.open(csv_path, FileAccess.READ)

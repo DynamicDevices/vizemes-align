@@ -1,7 +1,8 @@
 # C audio runtime + Godot inference via shared loader
 
 **Status:** Host C runtime (mel frontend + ORT when `ORT_ROOT` set). **Godot
-inference** uses the shared [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader)
+mel → tensor** via `MelFrontend` GDExtension (`scons`). **Godot inference** uses
+the shared [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader)
 addon — not a bespoke ORT GDExtension in this repo.
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
@@ -21,13 +22,25 @@ own sidecar contract (`export/ci-smoke/model.json`).
 | `src/viseme_runtime_stub.c` | API stub when built without ORT |
 | `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |
 | `tools/smoke_csv.c` | Host smoke: all `demo_inputs.csv` rows (≡ Python table) |
-| `../godot-demo/` | Godot 4.3 dev project — **OnnxLoader** addon (symlink) + CSV smoke |
+| `../godot-demo/` | Godot 4.3 dev project — **OnnxLoader** + **MelFrontend** + smokes |
 | `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |
 
-Removed: `VizemesOnnx` GDExtension (`godot/`, `SConstruct`, `demo/`). ONNX in
+Removed: `VizemesOnnx` GDExtension (monolithic ORT in this repo). ONNX in
 Godot is delegated to **godot-onnx-loader**; this tree keeps the audio/mel C
-path for host smokes and future PCM→context work.
+path plus **MelFrontend** (PCM → flat mel context for `OnnxLoader.predict`).
+
+## Godot MelFrontend
+
+```bash
+cd gdextension
+git submodule update --init --recursive
+scons platform=linux target=template_debug
+# .so → gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+```
+
+Open `../godot-demo/` → run `mel_smoke.tscn` → expect `GODOT_MEL_ONNX_SMOKE_OK`
+(wav → mel context → OnnxLoader). Requires both addons built (OnnxLoader + MelFrontend).
 
 ## Target Godot shape ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync))
 
