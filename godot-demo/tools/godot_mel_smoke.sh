@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Headless Godot smokes — ensure both GDExtensions are registered (extension_list cache).
+# Nix: run inside godot-onnx-loader `nix develop` (sets GODOT_BIN + ONNX_ORT_BIN).
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 GODOT="${GODOT_BIN:-${GODOT:-${HOME}/Downloads/Godot_v4.6.1-stable_linux.x86_64}}"

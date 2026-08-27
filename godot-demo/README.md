@@ -40,6 +40,8 @@ Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` 
 
 Headless Godot (both GDExtensions): `bash godot-demo/tools/godot_mel_smoke.sh`
 
+NixOS CI (`nixos-self-hosted`) runs the same script after building MelFrontend + cloning/building godot-onnx-loader.
+
 ## Note
 
 Monolithic `VizemesOnnx` (ORT inside vizemes GDExtension) is removed. Split:

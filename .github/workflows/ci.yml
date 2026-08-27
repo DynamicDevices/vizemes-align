@@ -169,26 +169,27 @@ jobs:
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 
-  # MelFrontend godot-cpp on Julian's NixOS runner (persistent SCONS_CACHE).
-  # godot-onnx-loader + export fixture have their own CI jobs elsewhere.
+  # MelFrontend godot-cpp + headless Godot smokes on Julian's NixOS runner.
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     env:
       TMPDIR: /var/tmp
       MEL_SCONS_CACHE: /var/tmp/github-runner-cache/scons/vizemes-mel
+      ONNX_LOADER_SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
+      ONNX_LOADER_ROOT: /var/tmp/github-runner-cache/godot-onnx-loader-src
     steps:
       - uses: actions/checkout@v7
         with:
           submodules: recursive
 
-      - name: Detect MelFrontend / flake changes
+      - name: Detect MelFrontend / Godot smoke changes
         id: mel
         run: |
           set -euo pipefail
           RUN=1
           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
             if ! git diff --name-only "${{ github.event.pull_request.base.sha }}"...HEAD | grep -qE \
-              '^(gdextension/|godot-demo/mel_|flake\.nix|\.github/workflows/ci\.yml)'; then
+              '^(gdextension/|godot-demo/|flake\.nix|\.github/workflows/ci\.yml)'; then
               RUN=0
             fi
           fi
@@ -207,4 +208,31 @@ jobs:
             cd gdextension
             scons -j"$(nproc)" platform=linux target=template_debug
             test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+          '
+
+      - name: Godot mel+lipsync smoke (NixOS)
+        if: steps.mel.outputs.run == '1'
+        run: |
+          set -euo pipefail
+          mkdir -p "$ONNX_LOADER_SCONS_CACHE"
+          if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
+            git clone --depth 1 --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
+          else
+            git -C "$ONNX_LOADER_ROOT" fetch --depth 1 origin main
+            git -C "$ONNX_LOADER_ROOT" checkout -f FETCH_HEAD
+            git -C "$ONNX_LOADER_ROOT" submodule update --init --recursive
+          fi
+          ln -sfn "$ONNX_LOADER_ROOT/addons/onnx_loader" godot-demo/addons/onnx_loader
+          test -f gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+          test -f export/ci-smoke/model.onnx
+          test -f export/ci-smoke/ci-fixture.wav
+          nix develop "$ONNX_LOADER_ROOT" --command bash -c '
+            set -euo pipefail
+            export SCONS_CACHE='"$ONNX_LOADER_SCONS_CACHE"'
+            cd '"$ONNX_LOADER_ROOT"'
+            rm -f addons/onnx_loader/bin/libonnxruntime.so*
+            scons -j"$(nproc)" platform=linux target=template_debug smoke-dlopen-ort
+            test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
+            cd '"$GITHUB_WORKSPACE"'
+            bash godot-demo/tools/godot_mel_smoke.sh
           '
