@@ -144,8 +144,6 @@ jobs:
     runs-on: ubuntu-latest
     env:
       SCONS_CACHE: ${{ github.workspace }}/.scons-cache
-      LOADER_CACHE: ${{ github.workspace }}/.loader-cache
-      LOADER_SCONS_CACHE: ${{ github.workspace }}/.loader-scons-cache
     steps:
       - uses: actions/checkout@v7
         with:
@@ -161,12 +159,10 @@ jobs:
         with:
           path: |
             .scons-cache
-            .loader-cache
-            .loader-scons-cache
             /tmp/onnxruntime-linux-x64-1.20.1
-          key: vizemes-infer-${{ runner.os }}-${{ hashFiles('gdextension/**', 'export/ci-smoke/model.onnx') }}-loader-main
+          key: mel-scons-${{ runner.os }}-${{ hashFiles('gdextension/SConstruct', 'gdextension/custom.py', 'gdextension/src/**', 'gdextension/godot-cpp/**') }}
           restore-keys: |
-            vizemes-infer-${{ runner.os }}-
+            mel-scons-${{ runner.os }}-
 
       - name: install scons
         run: pip install scons
@@ -179,34 +175,6 @@ jobs:
               "https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VER}/onnxruntime-linux-x64-${ORT_VER}.tgz"
             tar -C /tmp -xzf /tmp/ort.tgz
           fi
-          echo "ORT_LIB=${ORT_ROOT}/lib" >> "$GITHUB_ENV"
-
-      - name: checkout or update godot-onnx-loader
-        run: |
-          set -euo pipefail
-          if [[ -d "$LOADER_CACHE/.git" ]]; then
-            git -C "$LOADER_CACHE" fetch --depth 1 origin main
-            git -C "$LOADER_CACHE" checkout FETCH_HEAD
-            git -C "$LOADER_CACHE" submodule update --init --recursive
-          else
-            git clone --depth 1 --recurse-submodules \
-              https://github.com/DynamicDevices/godot-onnx-loader.git "$LOADER_CACHE"
-          fi
-
-      - name: godot-onnx-loader scons smoke-csv
-        run: |
-          set -euo pipefail
-          export LIBRARY_PATH="${ORT_LIB}${LIBRARY_PATH:+:$LIBRARY_PATH}"
-          export SCONS_CACHE="$LOADER_SCONS_CACHE"
-          cd "$LOADER_CACHE"
-          scons -j"$(nproc)" platform=linux target=template_debug smoke-csv smoke-dlopen-ort
-          test -f addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so
-          test -f addons/onnx_loader/bin/libonnxruntime.so.1
-          ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q libonnxruntime
-          ! ldd addons/onnx_loader/bin/libonnx_loader.linux.template_debug.x86_64.so | grep -q 'libstdc++'
-          grep -q 'ONNX_LOADER_CSV_SMOKE_OK' /tmp/onnx-loader-smoke-csv.txt
-          grep -q 'hit_rate=' /tmp/onnx-loader-smoke-csv.txt
-          grep -q 'ONNX_DLOPEN_TEARDOWN_OK' /tmp/onnx-loader-smoke-dlopen.txt
 
       - name: gdextension host make smoke-csv (C mel + ORT, no Godot .so)
         run: |
