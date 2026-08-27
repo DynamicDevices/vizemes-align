@@ -37,7 +37,7 @@ godot_sources = [
 
 env_cpp = env.Clone()
 env_cpp.Append(
-    CXXFLAGS=["-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-fno-gnu-unique"],
+    CXXFLAGS=["-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-unused-variable", "-fno-gnu-unique"],
     CPPPATH=inc,
     LINKFLAGS=["-Wl,-z,noexecstack"],
 )

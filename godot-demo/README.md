@@ -26,7 +26,7 @@ git submodule update --init --recursive
 scons platform=linux target=template_debug
 ```
 
-## Godot 4.3
+## Godot 4.5+
 
 Open `godot-demo/`:
 
