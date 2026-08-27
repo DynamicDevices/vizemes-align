@@ -6,6 +6,9 @@ config/name="VizemesOnnxLoaderDev"
 run/main_scene="res://csv_smoke.tscn"
 config/features=PackedStringArray("4.3")
 
+[native_extensions]
+paths=["res://addons/onnx_loader/onnx_loader.gdextension", "res://addons/vizemes_mel/vizemes_mel.gdextension"]
+
 [display]
 window/size/viewport_width=800
 window/size/viewport_height=450

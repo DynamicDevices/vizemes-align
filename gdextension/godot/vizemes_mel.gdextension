@@ -1,0 +1,9 @@
+[configuration]
+
+entry_symbol = "vizemes_mel_library_init"
+compatibility_minimum = "4.3"
+
+[libraries]
+
+linux.debug.x86_64 = "res://addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so"
+linux.release.x86_64 = "res://addons/vizemes_mel/bin/libvizemes_mel.linux.template_release.x86_64.so"

@@ -13,7 +13,8 @@ gdextension/build/
 gdextension/bin/
 gdextension/demo/bin/
 gdextension/.sconsign.dblite
-gdextension/godot/*.os
+gdextension/**/*.os
+gdextension/godot/bin/
 godot-demo/.godot/
 export/ci-smoke/demo_row0.f32
 

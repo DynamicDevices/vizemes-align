@@ -151,6 +151,14 @@ jobs:
           grep -q 'GDEXT_ORT_CSV_SMOKE_OK' /tmp/vizemes-smoke-csv.txt
           grep -q 'hit_rate=' /tmp/vizemes-smoke-csv.txt
 
+      - name: vizemes MelFrontend GDExtension (scons, no ORT)
+        run: |
+          set -euo pipefail
+          git submodule update --init gdextension/godot-cpp
+          cd gdextension
+          scons platform=linux target=template_debug
+          test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+
   nixos-self-hosted:
     runs-on: [self-hosted, Linux, nixos, esl-nixos]
     # Runner workdir lives on /run tmpfs (2G). Keep pip/nix caches on disk.
