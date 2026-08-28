@@ -40,7 +40,7 @@ path (`bash tools/godot_46_ms_ort.sh`) or a stock 4.6 editor binary.
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
 | `seek_probe.tscn` | `GODOT_SEEK_PROBE_OK` — seek times vs alignment; mel L2 vs training path (editor OK) |
 | `viseme_timeline.tscn` | Overlay plot: 15 ONNX weight curves + MFA/trained viseme boxes (editor F6) |
-| `mic_lipsync.tscn` | Live mic GUI demo (not headless) — `AudioStreamMicrophone` → streaming mel → visemes |
+| `mic_lipsync.tscn` | Live mic GUI demo (not headless) — Godot 4.6 `AudioServer.get_input_frames` → streaming mel → visemes |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
 
@@ -104,7 +104,8 @@ Headless markers: `GODOT_VISEME_TIMELINE_OK`, `GODOT_SEEK_PROBE_OK` (seek also i
 
 ### Live mic (`mic_lipsync.tscn`)
 
-Open in Godot (not headless): captures mic via `AudioEffectCapture`, resamples to 16 kHz,
+Open in Godot (not headless): captures mic via `AudioServer.get_input_frames()` /
+`get_input_mix_rate()`, resamples to 16 kHz with `VisemeUtils.resample_pcm`,
 feeds `push_pcm_contexts`, drives `VisemeSystem` when present else `VisemeSystemStub`.
 Also reachable from the timeline/seek **Mic…** buttons.
 

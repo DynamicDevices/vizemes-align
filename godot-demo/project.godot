@@ -9,6 +9,9 @@ config/features=PackedStringArray("4.6")
 [native_extensions]
 paths=["res://addons/onnx_loader/onnx_loader.gdextension", "res://addons/vizemes_mel/vizemes_mel.gdextension"]
 
+[audio]
+driver/enable_input=true
+
 [display]
 window/size/viewport_width=1280
 window/size/viewport_height=720
