@@ -3,10 +3,10 @@
   "stem": "1320-122617-0010",
   "wav": "export/ci-smoke/timeline_1320-122617-0010.wav",
   "model_json": "export/ci-smoke/model.json",
-  "onnx": "export/ci-smoke/model_a_tc.onnx",
+  "onnx": "export/ci-smoke/model.onnx",
   "onnx_b": "export/ci-smoke/model_b.onnx",
-  "label_a": "A:tc-h64",
-  "label_b": "B:tc-h16",
+  "label_a": "A:hidden64",
+  "label_b": "B:hidden16",
   "context_frames": 20,
   "hop_s": 0.01,
   "duration_s": 10.0,
@@ -957,5 +957,122 @@
       ]
     }
   ],
-  "note": "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; boxes are MFA phones collapsed to trained viseme labels. Optional onnx_b overlays a second model (toggle A/B/D in editor)."
+  "words": [
+    {
+      "start": 0.53,
+      "end": 0.69,
+      "word": "the"
+    },
+    {
+      "start": 0.69,
+      "end": 1.12,
+      "word": "task"
+    },
+    {
+      "start": 1.12,
+      "end": 1.22,
+      "word": "will"
+    },
+    {
+      "start": 1.22,
+      "end": 1.47,
+      "word": "not"
+    },
+    {
+      "start": 1.47,
+      "end": 1.58,
+      "word": "be"
+    },
+    {
+      "start": 1.58,
+      "end": 2.13,
+      "word": "difficult"
+    },
+    {
+      "start": 2.13,
+      "end": 2.54,
+      "word": "returned"
+    },
+    {
+      "start": 2.54,
+      "end": 2.9,
+      "word": "david"
+    },
+    {
+      "start": 2.9,
+      "end": 3.67,
+      "word": "hesitating"
+    },
+    {
+      "start": 4.21,
+      "end": 4.58,
+      "word": "though"
+    },
+    {
+      "start": 4.58,
+      "end": 4.74,
+      "word": "i"
+    },
+    {
+      "start": 4.74,
+      "end": 5.21,
+      "word": "greatly"
+    },
+    {
+      "start": 5.21,
+      "end": 5.49,
+      "word": "fear"
+    },
+    {
+      "start": 5.49,
+      "end": 5.64,
+      "word": "your"
+    },
+    {
+      "start": 5.64,
+      "end": 6.16,
+      "word": "presence"
+    },
+    {
+      "start": 6.16,
+      "end": 6.3,
+      "word": "would"
+    },
+    {
+      "start": 6.3,
+      "end": 6.73,
+      "word": "rather"
+    },
+    {
+      "start": 6.79,
+      "end": 7.38,
+      "word": "increase"
+    },
+    {
+      "start": 7.38,
+      "end": 7.65,
+      "word": "than"
+    },
+    {
+      "start": 7.65,
+      "end": 8.09,
+      "word": "mitigate"
+    },
+    {
+      "start": 8.09,
+      "end": 8.25,
+      "word": "his"
+    },
+    {
+      "start": 8.25,
+      "end": 8.71,
+      "word": "unhappy"
+    },
+    {
+      "start": 8.71,
+      "end": 9.45,
+      "word": "fortunes"
+    }
+  ],
+  "note": "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; boxes are MFA phones collapsed to trained viseme labels; words are MFA word intervals (when the TextGrid has a words tier). Optional onnx_b overlays a second model (toggle A/B/D in editor)."
 }

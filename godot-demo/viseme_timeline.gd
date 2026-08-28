@@ -36,6 +36,7 @@ var _hop_s := 0.01
 var _context_frames := 20
 var _names: Array = []
 var _boxes: Array = []
+var _words: Array = [] ## MFA word intervals {start,end,word}
 ## Each entry: PackedFloat32Array of length n_visemes (softmax at that hop).
 var _series: Array = []
 ## Optional second ONNX softmax series for A/B compare (same mel contexts).
@@ -240,6 +241,7 @@ func _on_stem_load() -> void:
 	_series.clear()
 	_series_b.clear()
 	_boxes.clear()
+	_words.clear()
 	var code := _load_and_run()
 	if code != 0:
 		push_error("reload failed after export")
@@ -295,11 +297,14 @@ func _finish_recording() -> void:
 		queue_redraw()
 		return
 	_stop_playback()
-	_pcm = mono
 	_status = "inferring recording into graph…"
 	queue_redraw()
+	# Infer first; only keep new PCM if curves recompute (else playable clip + stale graph).
+	var prev_pcm := _pcm
+	_pcm = mono
 	var code := _infer_from_pcm()
 	if code != 0:
+		_pcm = prev_pcm
 		_status = "record infer failed (graph unchanged) — check MelFrontend/OnnxLoader + model.onnx"
 	else:
 		_view_t0 = 0.0
@@ -325,15 +330,21 @@ func _infer_from_pcm() -> int:
 	var root := _repo_root()
 	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
 	var json_path := root.path_join("export/ci-smoke/model.json")
-	if not FileAccess.file_exists(onnx_path):
+	if not FileAccess.file_exists(onnx_path) or not FileAccess.file_exists(json_path):
 		return 1
 	_names = VisemeUtils.load_id_to_name(json_path)
 	var mel = ClassDB.instantiate("MelFrontend")
 	var loader = ClassDB.instantiate("OnnxLoader")
-	if mel == null or loader == null or not loader.load_model(onnx_path):
+	if mel == null or loader == null:
+		return 1
+	if not mel.configure_from_json(json_path):
+		push_error("MelFrontend configure_from_json failed for record infer")
+		return 1
+	if not loader.load_model(onnx_path):
 		return 1
 	var contexts: Array = mel.build_utterance_contexts(_pcm)
 	if contexts.is_empty():
+		push_error("record infer: no mel contexts")
 		return 1
 	_series = _predict_series(loader, contexts)
 	if _series.is_empty():
@@ -341,6 +352,7 @@ func _infer_from_pcm() -> int:
 	_series_b.clear()
 	# Live clips have no MFA boxes — clear any leftover train-set align overlay.
 	_boxes.clear()
+	_words.clear()
 	_context_frames = 20
 	_hop_s = 0.01
 	_rebuild_hard_bytes()
@@ -382,6 +394,7 @@ func _load_and_run() -> int:
 	_context_frames = int(probe.get("context_frames", 20))
 	_names = probe.get("viseme_names", [])
 	_boxes = probe.get("boxes", [])
+	_words = probe.get("words", [])
 	_label_a = str(probe.get("label_a", "A:hidden64"))
 	_label_b = str(probe.get("label_b", "B"))
 	if _stem_edit != null:
@@ -730,8 +743,36 @@ func _draw_chrome(r: Vector2) -> void:
 
 
 func _draw_mfa_boxes() -> void:
+	## Top: MFA English words; below: collapsed viseme expect labels.
 	var band := Rect2(_plot.position.x, _plot.position.y, _plot.size.x, _plot.size.y * 0.22)
 	draw_rect(band, Color(0.16, 0.17, 0.20))
+	var word_h := band.size.y * 0.42
+	var vis_y := band.position.y + word_h
+	var vis_h := band.size.y - word_h
+	for w in _words:
+		if typeof(w) != TYPE_DICTIONARY:
+			continue
+		var wt0 := float(w.get("start", 0.0))
+		var wt1 := float(w.get("end", 0.0))
+		if wt1 < _view_t0 or wt0 > _view_t1:
+			continue
+		var text := str(w.get("word", "")).strip_edges()
+		if text.is_empty():
+			continue
+		var low := text.to_lower()
+		if low == "sil" or low == "sp" or low == "spn":
+			continue
+		var x0 := _t_to_x(wt0)
+		var x1 := _t_to_x(wt1)
+		var ww := maxf(2.0, x1 - x0)
+		draw_rect(Rect2(x0, band.position.y + 2.0, ww, word_h - 4.0), Color(0.22, 0.28, 0.36, 0.55))
+		if ww > 18.0:
+			draw_string(
+				ThemeDB.fallback_font,
+				Vector2(x0 + 2.0, band.position.y + word_h * 0.72),
+				text,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.92, 0.94, 0.98, 0.95)
+			)
 	for b in _boxes:
 		if typeof(b) != TYPE_DICTIONARY:
 			continue
@@ -744,13 +785,13 @@ func _draw_mfa_boxes() -> void:
 		var x1 := _t_to_x(bt1)
 		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
 		draw_rect(
-			Rect2(x0, band.position.y + 4.0, maxf(2.0, x1 - x0), band.size.y - 8.0),
+			Rect2(x0, vis_y + 2.0, maxf(2.0, x1 - x0), vis_h - 4.0),
 			Color(col.r, col.g, col.b, 0.35)
 		)
 		if x1 - x0 > 28.0:
 			draw_string(
 				ThemeDB.fallback_font,
-				Vector2(x0 + 3.0, band.position.y + band.size.y * 0.62),
+				Vector2(x0 + 3.0, vis_y + vis_h * 0.70),
 				str(b.get("expect_name", "?")),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(1, 1, 1, 0.9)
 			)

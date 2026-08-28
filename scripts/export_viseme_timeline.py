@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from export_godot_package import load_viseme_map, phones_from_textgrid  # noqa: E402
+from export_godot_package import load_viseme_map, phones_from_textgrid, words_from_textgrid  # noqa: E402
 
 
 def merge_viseme_boxes(
@@ -110,6 +110,7 @@ def main() -> int:
 
     phones = phones_from_textgrid(tg_path)
     boxes = merge_viseme_boxes(phones, phone_to_idx, id_to_name)
+    words = words_from_textgrid(tg_path)
 
     # Prefer a portable copy under export/ci-smoke for Godot (esp. test-clean).
     wav_rel = str(wav.relative_to(ROOT))
@@ -142,9 +143,11 @@ def main() -> int:
         "viseme_names": names,
         "visemes": name_to_idx,
         "boxes": boxes,
+        "words": words,
         "note": (
             "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; "
-            "boxes are MFA phones collapsed to trained viseme labels. "
+            "boxes are MFA phones collapsed to trained viseme labels; "
+            "words are MFA word intervals (when the TextGrid has a words tier). "
             "Optional onnx_b overlays a second model (toggle A/B/D in editor)."
         ),
     }
