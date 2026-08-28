@@ -22,12 +22,16 @@ var _orbiting := false
 var _orbit_last := Vector2.ZERO
 var _pivot := Vector3(0.0, 1.74, 0.09)
 var _cam_dist := 0.18
+## Extra pivot Y (metres) from the mouth-height slider — Julian feedback.
+var _mouth_y_off := 0.0
+var _height_slider: VSlider
+var _height_lbl: Label
 var _manual_ovr := PackedFloat32Array()
 var _bar_drag := -1
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(280, 140)
+	custom_minimum_size = Vector2(280, 180)
 	_manual_ovr.resize(OVR.size())
 	_cam = Camera3D.new()
 	_cam.fov = 24.0
@@ -35,6 +39,7 @@ func _ready() -> void:
 	_apply_camera()
 	# After avatar loads, snap pivot to head mesh mouth band if possible.
 	call_deferred("_retarget_mouth_pivot")
+	_build_mouth_height_ui()
 
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-40.0, -20.0, 0.0)
@@ -87,6 +92,45 @@ func _on_face_resized() -> void:
 		_split.split_offset = int(clampf(w * 0.20, 100.0, 220.0))
 
 
+func _build_mouth_height_ui() -> void:
+	## Vertical slider so Julian can centre the mouth and report the offset.
+	var col := VBoxContainer.new()
+	col.name = "MouthHeight"
+	_view_wrap.add_child(col)
+	col.set_anchors_and_offsets_preset(Control.PRESET_RIGHT_WIDE)
+	col.offset_left = -44.0
+	col.offset_right = -4.0
+	col.offset_top = 6.0
+	col.offset_bottom = -6.0
+	col.mouse_filter = Control.MOUSE_FILTER_STOP
+	_height_lbl = Label.new()
+	_height_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_height_lbl.add_theme_font_size_override("font_size", 11)
+	_height_lbl.tooltip_text = "Mouth pivot Y offset (m) — tell us the value that centres the mouth"
+	col.add_child(_height_lbl)
+	_height_slider = VSlider.new()
+	_height_slider.min_value = -0.15
+	_height_slider.max_value = 0.15
+	_height_slider.step = 0.005
+	_height_slider.value = 0.0
+	_height_slider.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_height_slider.tooltip_text = "Mouth height"
+	_height_slider.value_changed.connect(_on_mouth_height_changed)
+	col.add_child(_height_slider)
+	_update_height_label()
+
+
+func _on_mouth_height_changed(v: float) -> void:
+	_mouth_y_off = v
+	_apply_camera()
+	_update_height_label()
+
+
+func _update_height_label() -> void:
+	if _height_lbl != null:
+		_height_lbl.text = "%+.3f" % _mouth_y_off
+
+
 func _add_fallback_label(msg: String) -> void:
 	var lbl := Label3D.new()
 	lbl.text = msg
@@ -117,6 +161,7 @@ func _retarget_mouth_pivot() -> void:
 func _apply_camera() -> void:
 	if _cam == null:
 		return
+	var pivot := _pivot + Vector3(0.0, _mouth_y_off, 0.0)
 	var yaw_r := deg_to_rad(_yaw)
 	var pitch_r := deg_to_rad(clampf(_pitch, -35.0, 15.0))
 	var offset := Vector3(
@@ -124,8 +169,8 @@ func _apply_camera() -> void:
 		sin(pitch_r),
 		cos(yaw_r) * cos(pitch_r)
 	) * _cam_dist
-	_cam.position = _pivot + offset
-	_cam.look_at(_pivot, Vector3.UP)
+	_cam.position = pivot + offset
+	_cam.look_at(pivot, Vector3.UP)
 
 
 func _on_view_gui_input(event: InputEvent) -> void:
