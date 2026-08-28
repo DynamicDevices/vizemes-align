@@ -9,7 +9,7 @@ const VisemeTarget := preload("res://viseme_target.gd")
 const TimelineSelectOverlay := preload("res://timeline_select_overlay.gd")
 const SAMPLE_RATE := 16000
 ## Single-caret Space play: ± this many seconds around the caret.
-const CARET_PLAY_PAD_S := 0.15
+const CARET_PLAY_PAD_S := 0.10
 
 ## Distinct colours for the 15 model classes (silence … ou).
 const LINE_COLORS: Array[Color] = [
@@ -212,7 +212,7 @@ func _build_stem_bar() -> void:
 
 	var play_btn := Button.new()
 	play_btn.text = "Play"
-	play_btn.tooltip_text = "Play caret ±150ms, or selection range, or visible window"
+	play_btn.tooltip_text = "Play caret ±100ms, or selection range, or visible window"
 	play_btn.pressed.connect(_play_selection)
 	bar.add_child(play_btn)
 
@@ -777,7 +777,7 @@ func _draw_disagree_ribbon() -> void:
 			draw_rect(Rect2(_t_to_x(seg), y, maxf(1.0, _t_to_x(t) - _t_to_x(seg)), h), col)
 			seg = -1.0
 	if seg >= 0.0:
-		var t_end := mini(_view_t1, t0 + float(n - 1) * _hop_s)
+		var t_end := minf(_view_t1, t0 + float(n - 1) * _hop_s)
 		draw_rect(Rect2(_t_to_x(seg), y, maxf(1.0, _t_to_x(t_end) - _t_to_x(seg)), h), col)
 
 
@@ -819,9 +819,9 @@ func _draw_time_axis(curve_top: float, curve_h: float) -> void:
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
-		var sel_label := "caret %.3fs (Space/Play = ±150ms)" % _sel_t0
+		var sel_label := "caret %.3fs (Space/Play = ±100ms)" % _sel_t0
 		if absf(_sel_t1 - _sel_t0) >= 0.02:
-			sel_label = "sel %.3f–%.3fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
+			sel_label = "sel %.3f–%.3fs" % [minf(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
 		draw_string(
 			ThemeDB.fallback_font,
 			Vector2(_plot.position.x + _plot.size.x * 0.22, ty),

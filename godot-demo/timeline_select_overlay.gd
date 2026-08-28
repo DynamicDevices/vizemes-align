@@ -69,7 +69,7 @@ func _t_to_x(t: float) -> float:
 
 
 func _px_pair_to_times(x0: float, x1: float) -> Vector2:
-	var lo := mini(x0, x1)
+	var lo := minf(x0, x1)
 	var hi := maxf(x0, x1)
 	if hi - lo < SELECT_DRAG_PX:
 		var t := _x_to_t(lo)
@@ -179,7 +179,7 @@ func _zoom_at(x: float, factor: float) -> void:
 func _draw() -> void:
 	# Live drag preview from pixels (not stale times).
 	if _drag == Drag.SELECT and _anchor_x >= 0.0:
-		var x0 := mini(_anchor_x, _cur_x)
+		var x0 := minf(_anchor_x, _cur_x)
 		var x1 := maxf(_anchor_x, _cur_x)
 		if x1 - x0 < SELECT_DRAG_PX:
 			draw_line(Vector2(x0, 0.0), Vector2(x0, size.y), Color(0.95, 0.85, 0.2, 0.95), 2.0)
@@ -188,7 +188,7 @@ func _draw() -> void:
 		return
 	if sel_t0 < 0.0 or not _ready_size():
 		return
-	var x0 := _t_to_x(mini(sel_t0, sel_t1))
+	var x0 := _t_to_x(minf(sel_t0, sel_t1))
 	var x1 := _t_to_x(maxf(sel_t0, sel_t1))
 	if absf(sel_t1 - sel_t0) < CARET_EPS_S or x1 - x0 < 2.0:
 		draw_line(Vector2(x0, 0.0), Vector2(x0, size.y), Color(0.95, 0.85, 0.2, 0.95), 2.0)

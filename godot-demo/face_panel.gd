@@ -96,7 +96,7 @@ func _add_fallback_label(msg: String) -> void:
 
 
 func _retarget_mouth_pivot() -> void:
-	## Aim at mouth band of Wolf3D_Head; bias upward (Julian: camera was too low / neck).
+	## Aim at mouth band of Wolf3D_Head (Julian: onto the mouth, not nose/neck).
 	if viseme_face == null:
 		return
 	var head := viseme_face.find_child("Wolf3D_Head", true, false)
@@ -105,13 +105,12 @@ func _retarget_mouth_pivot() -> void:
 		var aabb: AABB = mi.get_aabb()
 		var local_mouth := aabb.position + Vector3(
 			aabb.size.x * 0.5,
-			aabb.size.y * 0.48,
-			aabb.size.z * 0.82
+			aabb.size.y * 0.36,
+			aabb.size.z * 0.88
 		)
 		_pivot = mi.to_global(local_mouth)
-		_pivot.y += 0.04
-		_cam_dist = clampf(aabb.size.length() * 0.45, 0.12, 0.28)
-		_pitch = -20.0
+		_cam_dist = clampf(aabb.size.length() * 0.40, 0.10, 0.24)
+		_pitch = -12.0
 		_apply_camera()
 
 
@@ -126,8 +125,6 @@ func _apply_camera() -> void:
 		cos(yaw_r) * cos(pitch_r)
 	) * _cam_dist
 	_cam.position = _pivot + offset
-	# Explicit lift so framing sits on mouth, not neck.
-	_cam.position.y += 0.06
 	_cam.look_at(_pivot, Vector3.UP)
 
 
