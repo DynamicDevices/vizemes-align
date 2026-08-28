@@ -29,6 +29,9 @@ jobs:
             bash -n "$s"
           done
 
+      - name: GDScript mini/maxi float footgun lint
+        run: python scripts/check_gdscript_int_math.py godot-demo
+
       - name: resolve_micromamba rejects missing
         run: |
           set +e
