@@ -62,6 +62,9 @@ var _drag_anchor_x := 0.0
 var _select_moved := false
 var _pan_view_t0 := 0.0
 var _pan_view_t1 := 0.0
+## Pixel x of caret / selection edges (draw uses these so caret matches the click).
+var _sel_px0 := -1.0
+var _sel_px1 := -1.0
 ## Pixels of horizontal travel before a left-click becomes a range select.
 ## Higher than typical click jitter so yellow band doesn't appear left of the pointer.
 const SELECT_DRAG_PX := 12.0
@@ -466,14 +469,20 @@ func _clamp_view() -> void:
 		_view_t0 = maxf(0.0, _view_t1 - span)
 
 
+func _pointer_pos(event: InputEvent) -> Vector2:
+	## Map event into this Control's local space (SplitContainer-safe).
+	var local_ev := make_input_local(event)
+	if local_ev is InputEventMouse:
+		return (local_ev as InputEventMouse).position
+	return get_local_mouse_position()
+
+
 func _gui_input(event: InputEvent) -> void:
 	if _quit_on_done:
 		return
-	# Prefer event.position (stable Control space) over get_local_mouse_position.
-	var mouse := get_local_mouse_position()
+	var mouse := _pointer_pos(event)
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
-		mouse = mb.position
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
 			_zoom_at(mouse.x, 0.85)
 			accept_event()
@@ -495,18 +504,17 @@ func _gui_input(event: InputEvent) -> void:
 				_drag = Drag.SELECT
 				_drag_anchor_x = mouse.x
 				_select_moved = false
-				# Click = caret (vertical line). Range only after drag past SELECT_DRAG_PX.
-				_sel_t0 = _x_to_t(_drag_anchor_x)
+				_sel_px0 = mouse.x
+				_sel_px1 = mouse.x
+				_sel_t0 = _x_to_t(mouse.x)
 				_sel_t1 = _sel_t0
 				_feed_face_at_time(_sel_t0)
 				queue_redraw()
 				accept_event()
 			elif not mb.pressed and _drag == Drag.SELECT:
-				_finish_select(mb.position.x)
+				_finish_select(mouse.x)
 				accept_event()
 	elif event is InputEventMouseMotion:
-		var mm := event as InputEventMouseMotion
-		mouse = mm.position
 		if _drag == Drag.PAN:
 			var dt := (_drag_anchor_x - mouse.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
 			_view_t0 = _pan_view_t0 + dt
@@ -518,8 +526,10 @@ func _gui_input(event: InputEvent) -> void:
 			if not _select_moved and absf(mouse.x - _drag_anchor_x) >= SELECT_DRAG_PX:
 				_select_moved = true
 			if _select_moved:
-				_sel_t0 = _x_to_t(_drag_anchor_x)
-				_sel_t1 = _x_to_t(mouse.x)
+				_sel_px0 = mini(_drag_anchor_x, mouse.x)
+				_sel_px1 = maxf(_drag_anchor_x, mouse.x)
+				_sel_t0 = _x_to_t(_sel_px0)
+				_sel_t1 = _x_to_t(_sel_px1)
 				queue_redraw()
 			accept_event()
 	elif event is InputEventKey and event.pressed and not event.echo:
@@ -528,17 +538,21 @@ func _gui_input(event: InputEvent) -> void:
 
 func _finish_select(mouse_x: float) -> void:
 	_drag = Drag.NONE
+	var px := absf(mouse_x - _drag_anchor_x)
 	var t_press := _x_to_t(_drag_anchor_x)
 	var t_rel := _x_to_t(mouse_x)
-	var px := absf(mouse_x - _drag_anchor_x)
 	var dt := absf(t_rel - t_press)
-	# Pure click or tiny drag: caret at press — avoids yellow band left of the pointer.
-	if (not _select_moved and px < SELECT_DRAG_PX) or dt < SELECT_CARET_S or px < SELECT_DRAG_PX:
+	# Pure click or tiny drag: caret at the press pixel (not a quantized time).
+	if (not _select_moved) or px < SELECT_DRAG_PX or dt < SELECT_CARET_S:
+		_sel_px0 = _drag_anchor_x
+		_sel_px1 = _drag_anchor_x
 		_sel_t0 = t_press
 		_sel_t1 = t_press
 	else:
-		_sel_t0 = mini(t_press, t_rel)
-		_sel_t1 = maxf(t_press, t_rel)
+		_sel_px0 = mini(_drag_anchor_x, mouse_x)
+		_sel_px1 = maxf(_drag_anchor_x, mouse_x)
+		_sel_t0 = _x_to_t(_sel_px0)
+		_sel_t1 = _x_to_t(_sel_px1)
 	_select_moved = false
 	_feed_face_at_time(_sel_t0)
 	queue_redraw()
@@ -553,6 +567,8 @@ func _handle_key(key: InputEventKey) -> void:
 			_stop_playback()
 			_sel_t0 = -1.0
 			_sel_t1 = -1.0
+			_sel_px0 = -1.0
+			_sel_px1 = -1.0
 			queue_redraw()
 			accept_event()
 		KEY_R:
@@ -692,9 +708,11 @@ func _draw() -> void:
 
 
 func _canvas_size() -> Vector2:
+	# Never fall back to full viewport — that desyncs drawn curves from click x
+	# when this control is only a SplitContainer pane.
 	var r := size
 	if r.x <= 1.0 or r.y <= 1.0:
-		return get_viewport_rect().size
+		r = get_rect().size
 	return r
 
 
@@ -732,10 +750,14 @@ func _draw_chrome(r: Vector2) -> void:
 func _draw_selection() -> void:
 	if _sel_t0 < 0.0 or _sel_t1 < 0.0:
 		return
-	var sx0 := _t_to_x(mini(_sel_t0, _sel_t1))
-	var sx1 := _t_to_x(maxf(_sel_t0, _sel_t1))
+	# Prefer stored click pixels so the caret sits under the pointer (no x↔t drift).
+	var sx0 := _sel_px0 if _sel_px0 >= 0.0 else _t_to_x(mini(_sel_t0, _sel_t1))
+	var sx1 := _sel_px1 if _sel_px1 >= 0.0 else _t_to_x(maxf(_sel_t0, _sel_t1))
+	if sx1 < sx0:
+		var tmp := sx0
+		sx0 = sx1
+		sx1 = tmp
 	var w := sx1 - sx0
-	# Prefer caret whenever span is sub-threshold (time or pixels).
 	if w < SELECT_DRAG_PX or absf(_sel_t1 - _sel_t0) < SELECT_CARET_S:
 		draw_line(
 			Vector2(sx0, _plot.position.y),
