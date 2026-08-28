@@ -79,50 +79,34 @@ nix shell github:nixos/nixpkgs/nixos-26.05#godot_4_6 --command bash -c '
 '
 ```
 
-Then open `seek_probe.tscn` (F6) or make your own scenes under `godot-demo/`.
+Then open `viseme_timeline.tscn` (F6) — primary quality UI — or `seek_probe.tscn` for the table.
 
-### Seek probe (`seek_probe.tscn`) — editor-friendly
+### Quality UI (Julian) — start here
 
-Open `seek_probe.tscn` in Godot and run (F6). Output panel shows for each seek:
+**Primary:** `viseme_timeline.tscn` (project main scene). F6 in Godot **4.6+**.
 
-- expected viseme (from MFA alignment / training labels)
-- got viseme (ONNX argmax)
-- mel L2 vs the training-path context (`mel_features_c` → causal window)
+- Type a `test-clean` stem id (default `1320-122617-0010`) → **Load** to re-export MFA boxes + reload.
+- **Seek table…** opens expect/got + MEL dumps; **Mic…** opens live capture.
+- Wheel zoom, middle-drag pan, left-drag select, Space/P play, Esc clear, R reset.
+- A/B toggle models (if `onnx_b` set); D toggles argmax-disagreement ribbon.
 
-Regenerate the probe JSON (ci-fixture by default; use a LibriSpeech clip when aligned):
-
-```bash
-python3 scripts/export_seek_probe.py --subset ci-fixture
-# later, with MFA done:
-python3 scripts/export_seek_probe.py --subset test-clean --stem <utt_id> --seeks 8
-```
-
-Headless marker: `GODOT_SEEK_PROBE_OK` (also run by `godot_mel_smoke.sh`).
-
-### Viseme timeline (`viseme_timeline.tscn`) — editor plot
-
-Julian’s at-a-glance view: 15 coloured ONNX softmax curves vs time, with MFA phones
-collapsed to trained viseme **boxes** on the same axis.
+**Companion:** `seek_probe.tscn` — side-by-side expect vs got; full MEL dumps under
+`export/debug/seek_mel_<stem>_<t>.json` (written on each run; **Dump MEL** rewrites).
 
 ```bash
-python3 scripts/export_viseme_timeline.py --subset ci-fixture
-# real speech (~10s LibriSpeech example; after prepare+MFA+tensors):
-#   bash scripts/run_one_stem_timeline.sh 1320-122617-0010
-#   # or: python3 scripts/export_viseme_timeline.py --subset test-clean --stem <utt_id>
+python3 scripts/export_viseme_timeline.py --subset test-clean --stem 1320-122617-0010
+python3 scripts/export_seek_probe.py --subset test-clean --stem 1320-122617-0010 --seeks 8
+# CI fixture still available:
+python3 scripts/export_seek_probe.py --subset ci-fixture --out export/ci-smoke/seek_probe_ci_fixture.json
 ```
 
-Open `viseme_timeline.tscn` and run (F6). Marker: `GODOT_VISEME_TIMELINE_OK`.
-Current committed demo JSON uses LibriSpeech **1320-122617-0010** (~10s) with MFA boxes.
-
-Editor controls: mouse wheel zoom, middle-drag pan, left-drag select a time region,
-Space/P play selection (or the visible window) via `AudioStreamGenerator`, Esc clear,
-R reset zoom. If `onnx_b` is set in `viseme_timeline.json`, A/B toggle models and D
-toggles the argmax-disagreement ribbon (thinner/fainter curves = model B).
+Headless markers: `GODOT_VISEME_TIMELINE_OK`, `GODOT_SEEK_PROBE_OK` (seek also in `godot_mel_smoke.sh`).
 
 ### Live mic (`mic_lipsync.tscn`)
 
 Open in Godot (not headless): captures mic via `AudioEffectCapture`, resamples to 16 kHz,
 feeds `push_pcm_contexts`, drives `VisemeSystem` when present else `VisemeSystemStub`.
+Also reachable from the timeline/seek **Mic…** buttons.
 
 ### Real VisemeSystem (optional)
 

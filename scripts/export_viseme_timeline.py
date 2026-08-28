@@ -111,13 +111,19 @@ def main() -> int:
     phones = phones_from_textgrid(tg_path)
     boxes = merge_viseme_boxes(phones, phone_to_idx, id_to_name)
 
+    # Prefer a portable copy under export/ci-smoke for Godot (esp. test-clean).
     wav_rel = str(wav.relative_to(ROOT))
     ci_wav = ROOT / "export" / "ci-smoke" / "ci-fixture.wav"
     if args.subset == "ci-fixture" and ci_wav.exists():
         wav_rel = "export/ci-smoke/ci-fixture.wav"
         duration_s = wav_duration_s(ci_wav)
     else:
-        duration_s = wav_duration_s(wav)
+        dest = ROOT / "export" / "ci-smoke" / f"timeline_{stem}.wav"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.exists() or dest.stat().st_mtime < wav.stat().st_mtime:
+            dest.write_bytes(wav.read_bytes())
+        wav_rel = f"export/ci-smoke/timeline_{stem}.wav"
+        duration_s = wav_duration_s(dest)
 
     names = [id_to_name[i] for i in range(len(id_to_name))]
 

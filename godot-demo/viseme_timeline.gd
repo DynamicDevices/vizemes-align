@@ -4,6 +4,7 @@ extends Control
 ## via AudioStreamGenerator. Headless: load + print GODOT_VISEME_TIMELINE_OK.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const SAMPLE_RATE := 16000
 
 enum Drag { NONE, PAN, SELECT }
@@ -64,13 +65,17 @@ var _play_i := 0
 var _play_end := 0
 var _playing := false
 
+var _stem_edit: LineEdit
+var _load_btn: Button
+var _ui_top := 40.0
+
 
 func _repo_root() -> String:
-	return ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
+	return ClipProbeIo.repo_root()
 
 
 func _is_headless() -> bool:
-	return DisplayServer.get_name() == "headless" or OS.has_feature("dedicated_server")
+	return ClipProbeIo.is_headless()
 
 
 func _ready() -> void:
@@ -81,6 +86,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP if not _quit_on_done else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL
 	resized.connect(_on_resized)
+	if not _quit_on_done:
+		_build_stem_bar()
 	var code := _load_and_run()
 	if not _quit_on_done:
 		_setup_audio()
@@ -92,6 +99,76 @@ func _ready() -> void:
 		get_tree().quit(code)
 
 
+func _build_stem_bar() -> void:
+	var bar := HBoxContainer.new()
+	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	bar.offset_left = 8
+	bar.offset_right = -8
+	bar.offset_top = 4
+	bar.offset_bottom = 36
+	bar.add_theme_constant_override("separation", 8)
+	bar.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(bar)
+
+	var lbl := Label.new()
+	lbl.text = "stem"
+	bar.add_child(lbl)
+
+	_stem_edit = LineEdit.new()
+	_stem_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_stem_edit.placeholder_text = ClipProbeIo.DEFAULT_STEM
+	_stem_edit.text = ClipProbeIo.DEFAULT_STEM
+	_stem_edit.text_submitted.connect(func(_t): _on_stem_load())
+	bar.add_child(_stem_edit)
+
+	_load_btn = Button.new()
+	_load_btn.text = "Load"
+	_load_btn.pressed.connect(_on_stem_load)
+	bar.add_child(_load_btn)
+
+	var seek_btn := Button.new()
+	seek_btn.text = "Seek table…"
+	seek_btn.tooltip_text = "Side-by-side expect/got + MEL dumps"
+	seek_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://seek_probe.tscn"))
+	bar.add_child(seek_btn)
+
+	var mic_btn := Button.new()
+	mic_btn.text = "Mic…"
+	mic_btn.tooltip_text = "Live microphone capture"
+	mic_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://mic_lipsync.tscn"))
+	bar.add_child(mic_btn)
+
+	_ui_top = 44.0
+	_help = "stem+Load  wheel=zoom  mid=pan  left=select  Space=play  A/B=models  D=disagree  Esc=clear"
+
+
+func _on_stem_load() -> void:
+	var stem := _stem_edit.text.strip_edges()
+	if stem.is_empty():
+		stem = ClipProbeIo.DEFAULT_STEM
+		_stem_edit.text = stem
+	_status = "exporting timeline for %s…" % stem
+	queue_redraw()
+	_load_btn.disabled = true
+	var result: Dictionary = ClipProbeIo.export_viseme_timeline(stem, ClipProbeIo.DEFAULT_SUBSET)
+	_load_btn.disabled = false
+	if not result.get("ok", false):
+		_status = "export failed: %s" % str(result.get("output"))
+		push_error(_status)
+		queue_redraw()
+		return
+	print(result.get("output", ""))
+	_stop_playback()
+	_series.clear()
+	_series_b.clear()
+	_boxes.clear()
+	var code := _load_and_run()
+	if code != 0:
+		push_error("reload failed after export")
+	queue_redraw()
+	grab_focus()
+
+
 func _on_resized() -> void:
 	_refresh_plot_rect()
 	queue_redraw()
@@ -101,7 +178,7 @@ func _on_resized() -> void:
 func _refresh_plot_rect() -> void:
 	var r := _canvas_size()
 	var left := 72.0
-	var top := 36.0
+	var top := _ui_top + 8.0
 	var right := 160.0
 	var bottom := 56.0
 	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
@@ -142,6 +219,8 @@ func _load_and_run() -> int:
 	_boxes = probe.get("boxes", [])
 	_label_a = str(probe.get("label_a", "A:hidden64"))
 	_label_b = str(probe.get("label_b", "B"))
+	if _stem_edit != null:
+		_stem_edit.text = str(probe.get("stem", ClipProbeIo.DEFAULT_STEM))
 
 	var mel = ClassDB.instantiate("MelFrontend")
 	if mel == null:
@@ -464,11 +543,12 @@ func _n_visemes() -> int:
 func _draw_chrome(r: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, r), Color(0.08, 0.09, 0.11))
 	draw_rect(_plot, Color(0.12, 0.13, 0.16))
-	draw_string(
-		ThemeDB.fallback_font, Vector2(12, 22),
-		"Viseme timeline — ONNX weights + MFA boxes",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.9, 0.9, 0.9)
-	)
+	if _quit_on_done:
+		draw_string(
+			ThemeDB.fallback_font, Vector2(12, 22),
+			"Viseme timeline — ONNX weights + MFA boxes (quality UI)",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 16, Color(0.9, 0.9, 0.9)
+		)
 	draw_string(
 		ThemeDB.fallback_font, Vector2(12, r.y - 28), _status,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.7, 0.75, 0.8)

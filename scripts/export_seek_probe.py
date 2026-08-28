@@ -93,19 +93,26 @@ def main() -> int:
         return 1
 
     npz_path = tdir / f"{stem}.npz"
-    if not npz_path.exists():
-        print(f"Missing tensor {npz_path}; run build_train_tensors.py", file=sys.stderr)
-        return 1
-
     meta = json.loads(args.model_json.read_text(encoding="utf-8"))
     ctx = int(meta["context_frames"])
     hop = float(meta["audio"]["hop_length_samples"]) / float(meta["audio"]["sample_rate"])
     id_to_name = {int(v): str(k) for k, v in meta["visemes"].items()}
     name_to_idx, phone_to_idx = load_viseme_map(args.viseme_map)
 
-    z = np.load(npz_path)
-    X = z["X"].astype(np.float32)
-    y = z["y"].astype(np.int64)
+    if npz_path.exists():
+        z = np.load(npz_path)
+        X = z["X"].astype(np.float32)
+        y = z["y"].astype(np.int64)
+    else:
+        # Same training path as build_train_tensors — lets editor Load work before
+        # a full tensor cache exists for the stem.
+        from build_train_tensors import frame_viseme_ids, mel_features
+
+        print(f"no {npz_path}; computing mel via mel_features_c", file=sys.stderr)
+        X = mel_features(wav).astype(np.float32)
+        phones_for_y = phones_from_textgrid(tg_path)
+        y = frame_viseme_ids(phones_for_y, X.shape[0], hop, phone_to_idx)
+
     Xw, yw = windows(X, y, ctx)
 
     phones = phones_from_textgrid(tg_path)
@@ -136,11 +143,17 @@ def main() -> int:
             }
         )
 
-    # Prefer repo-relative wav under export/ci-smoke when ci-fixture
+    # Prefer repo-relative wav under export/ci-smoke for portable Godot opens.
     wav_rel = str(wav.relative_to(ROOT))
     ci_wav = ROOT / "export" / "ci-smoke" / "ci-fixture.wav"
     if args.subset == "ci-fixture" and ci_wav.exists():
         wav_rel = "export/ci-smoke/ci-fixture.wav"
+    elif args.subset != "ci-fixture":
+        dest = ROOT / "export" / "ci-smoke" / f"seek_{stem}.wav"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        if not dest.exists() or dest.stat().st_mtime < wav.stat().st_mtime:
+            dest.write_bytes(wav.read_bytes())
+        wav_rel = f"export/ci-smoke/seek_{stem}.wav"
 
     out = {
         "subset": args.subset,
