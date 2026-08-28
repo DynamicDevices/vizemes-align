@@ -88,6 +88,55 @@ static func argmax(weights: PackedFloat32Array) -> int:
 	return best
 
 
+## Pack soft weights → 1 byte: high nibble = viseme id (0–15), low nibble = blend (0–15).
+## Designed for ~1 byte / 20 ms Opus sideband (MPEG-4-style hard path).
+static func soft_to_hard_byte(weights: PackedFloat32Array) -> int:
+	if weights.is_empty():
+		return 0
+	var id := clampi(argmax(weights), 0, 15)
+	var peak := weights[id]
+	var blend := clampi(int(round(peak * 15.0)), 0, 15)
+	return (id << 4) | blend
+
+
+static func hard_byte_id(b: int) -> int:
+	return (b >> 4) & 0x0F
+
+
+static func hard_byte_blend01(b: int) -> float:
+	return float(b & 0x0F) / 15.0
+
+
+## Expand a hard byte to a sparse weight vector (length n) for VisemeSystem / plots.
+static func hard_byte_to_weights(b: int, n: int) -> PackedFloat32Array:
+	var out := PackedFloat32Array()
+	out.resize(maxi(1, n))
+	for i in out.size():
+		out[i] = 0.0
+	var id := hard_byte_id(b)
+	if id < out.size():
+		out[id] = hard_byte_blend01(b)
+	return out
+
+
+## Encode a softmax/OVR series (one PackedFloat32Array per hop) to 20 ms hard bytes.
+static func series_to_hard_bytes(
+	series: Array, hop_s: float, t_series0: float, frame_s: float = 0.02
+) -> PackedByteArray:
+	var out := PackedByteArray()
+	if series.is_empty() or hop_s <= 0.0 or frame_s <= 0.0:
+		return out
+	var t_end := t_series0 + float(series.size() - 1) * hop_s
+	var t := t_series0
+	while t <= t_end + 1e-6:
+		var idx := int(round((t - t_series0) / hop_s))
+		idx = clampi(idx, 0, series.size() - 1)
+		var w: PackedFloat32Array = series[idx]
+		out.append(soft_to_hard_byte(w))
+		t += frame_s
+	return out
+
+
 static func load_id_to_name(json_path: String) -> Array:
 	var f := FileAccess.open(json_path, FileAccess.READ)
 	if f == null:
