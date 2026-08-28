@@ -43,8 +43,11 @@ var _label_b := "B"
 var _show_a := true
 var _show_b := true
 var _show_disagree := true
+var _show_hard := true
+var _hard_bytes := PackedByteArray()
+var _hard_frame_s := 0.02
 var _status := ""
-var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=toggle models  D=disagree  Esc=clear"
+var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=models  D=disagree  H=hard  Esc=clear"
 
 var _pcm := PackedFloat32Array()
 var _view_t0 := 0.0
@@ -142,7 +145,7 @@ func _build_stem_bar() -> void:
 	bar.add_child(mic_btn)
 
 	_ui_top = 44.0
-	_help = "stem+Load  wheel=zoom  mid=pan  left=select  Space=play  A/B=models  D=disagree  Esc=clear"
+	_help = "stem+Load  wheel=zoom  mid=pan  left=select  Space=play  A/B=models  D=disagree  H=hard  Esc=clear"
 
 
 func _on_stem_load() -> void:
@@ -274,15 +277,19 @@ func _load_and_run() -> int:
 		else:
 			push_warning("onnx_b missing: %s" % onnx_b_path)
 
+	_rebuild_hard_bytes()
+
 	var t0 := float(_context_frames - 1) * _hop_s
 	var t_end := t0 + float(maxi(0, _series.size() - 1)) * _hop_s
 	_duration_s = maxf(_duration_s, t_end)
 	_view_t0 = 0.0
 	_view_t1 = _duration_s
 
-	_status = "stem=%s win=%d dur=%.2fs A=%s B=%s" % [
+	_status = "stem=%s win=%d hard=%dB@%.0fms dur=%.2fs A=%s B=%s" % [
 		str(probe.get("stem", "?")),
 		_series.size(),
+		_hard_bytes.size(),
+		_hard_frame_s * 1000.0,
 		_duration_s,
 		_label_a,
 		_label_b if not _series_b.is_empty() else "off",
@@ -290,6 +297,11 @@ func _load_and_run() -> int:
 	print("viseme_timeline %s" % _status)
 	print("GODOT_VISEME_TIMELINE_OK")
 	return 0
+
+
+func _rebuild_hard_bytes() -> void:
+	var t0 := float(_context_frames - 1) * _hop_s
+	_hard_bytes = VisemeUtils.series_to_hard_bytes(_series, _hop_s, t0, _hard_frame_s)
 
 
 func _predict_series(loader, contexts: Array) -> Array:
@@ -432,6 +444,10 @@ func _handle_key(key: InputEventKey) -> void:
 			_show_disagree = not _show_disagree
 			queue_redraw()
 			accept_event()
+		KEY_H:
+			_show_hard = not _show_hard
+			queue_redraw()
+			accept_event()
 
 
 func _zoom_at(x: float, factor: float) -> void:
@@ -519,6 +535,7 @@ func _draw() -> void:
 	_draw_selection()
 	_draw_mfa_boxes()
 	_draw_disagree_ribbon()
+	_draw_hard_ribbon()
 
 	var curve_top := _plot.position.y + _plot.size.y * 0.28
 	var curve_h := _plot.size.y * 0.68
@@ -642,6 +659,28 @@ func _draw_disagree_ribbon() -> void:
 	if seg >= 0.0:
 		var t_end := mini(_view_t1, t0 + float(n - 1) * _hop_s)
 		draw_rect(Rect2(_t_to_x(seg), y, maxf(1.0, _t_to_x(t_end) - _t_to_x(seg)), h), col)
+
+
+func _draw_hard_ribbon() -> void:
+	## Stepped MPEG-4-style hard id track (1 byte / 20 ms) under MFA boxes.
+	if not _show_hard or _hard_bytes.is_empty():
+		return
+	var t0 := float(_context_frames - 1) * _hop_s
+	var y := _plot.position.y + _plot.size.y * 0.22
+	var h := _plot.size.y * 0.06
+	for i in _hard_bytes.size():
+		var t := t0 + float(i) * _hard_frame_s
+		var t1 := t + _hard_frame_s
+		if t1 < _view_t0 or t > _view_t1:
+			continue
+		var b: int = _hard_bytes[i]
+		var vid := VisemeUtils.hard_byte_id(b)
+		var blend := VisemeUtils.hard_byte_blend01(b)
+		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
+		draw_rect(
+			Rect2(_t_to_x(t), y, maxf(1.0, _t_to_x(t1) - _t_to_x(t)), h),
+			Color(col.r, col.g, col.b, 0.25 + 0.55 * blend)
+		)
 
 
 func _draw_time_axis(curve_top: float, curve_h: float) -> void:

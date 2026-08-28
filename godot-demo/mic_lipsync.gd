@@ -16,6 +16,9 @@ var _target: Node
 var _frames: int = 0
 var _last_ovr: PackedFloat32Array = PackedFloat32Array()
 var _input_ok := false
+var _hard_bytes := PackedByteArray()
+var _hard_acc_pcm := PackedFloat32Array()
+var _hard_need := 320 ## 20 ms @ 16 kHz
 
 
 func _ready() -> void:
@@ -72,10 +75,24 @@ func _process(_delta: float) -> void:
 	var in_rate := int(round(AudioServer.get_input_mix_rate()))
 	pcm = VisemeUtils.resample_pcm(pcm, in_rate, TARGET_RATE)
 	_frames += _pipe.feed_pcm_mono_16k(pcm, _target)
+	# Accumulate 20 ms chunks → hard byte stream (VoIP sideband shape).
+	for s in pcm:
+		_hard_acc_pcm.append(s)
+	while _hard_acc_pcm.size() >= _hard_need:
+		if _pipe.last_ovr.size() > 0:
+			_hard_bytes.append(VisemeUtils.soft_to_hard_byte(_pipe.last_ovr))
+		var keep := PackedFloat32Array()
+		for i in range(_hard_need, _hard_acc_pcm.size()):
+			keep.append(_hard_acc_pcm[i])
+		_hard_acc_pcm = keep
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
 	if _last_ovr.size() > 0:
 		var top := VisemeUtils.argmax(_last_ovr)
-		_label.text = "viseme=%s  frames=%d  via=%s  in=%.0fHz" % [
-			VisemeUtils.OVR_NAMES[top], _frames, _target.name, AudioServer.get_input_mix_rate()
+		var hb := 0
+		if not _hard_bytes.is_empty():
+			hb = _hard_bytes[_hard_bytes.size() - 1]
+		_label.text = "viseme=%s  frames=%d  hard=%dB last=0x%02X  via=%s  in=%.0fHz" % [
+			VisemeUtils.OVR_NAMES[top], _frames, _hard_bytes.size(), hb, _target.name,
+			AudioServer.get_input_mix_rate()
 		]
