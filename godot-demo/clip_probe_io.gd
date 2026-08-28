@@ -101,7 +101,8 @@ static func dump_seek_mel(
 
 	var got_arr: Array = []
 	for i in got_mel.size():
-		got_arr.append(float("%.6g" % got_mel[i]))
+		# Godot `%` printf has no %g — use fixed float / str.
+		got_arr.append(got_mel[i])
 
 	var payload := {
 		"stem": stem,
@@ -120,5 +121,5 @@ static func dump_seek_mel(
 		return ""
 	f.store_string(JSON.stringify(payload, "\t"))
 	f.close()
-	print("MEL_DUMP %s expect=%s got=%s" % [path, payload["expect_fp"], payload["got_fp"]])
+	print("MEL_DUMP path=", path, " expect=", payload["expect_fp"], " got=", payload["got_fp"])
 	return path

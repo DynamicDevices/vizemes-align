@@ -63,5 +63,8 @@ run_scene() {
 run_scene "res://mel_smoke.tscn" "GODOT_MEL_ONNX_SMOKE_OK"
 run_scene "res://lipsync_smoke.tscn" "GODOT_LIPSYNC_SMOKE_OK"
 run_scene "res://streaming_smoke.tscn" "GODOT_STREAMING_SMOKE_OK"
+# Mel L2 gate uses the small ci-fixture probe (not the default test-clean quality UI JSON).
+export SEEK_PROBE_JSON="$(cd "$ROOT/.." && pwd)/export/ci-smoke/seek_probe_ci_fixture.json"
+export SEEK_PROBE_STRICT_MEL=1
 run_scene "res://seek_probe.tscn" "GODOT_SEEK_PROBE_OK"
 echo "GODOT_VIZEMES_SMOKE_OK"
