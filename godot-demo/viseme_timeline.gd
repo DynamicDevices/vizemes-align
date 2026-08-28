@@ -472,10 +472,10 @@ func _clamp_view() -> void:
 
 
 func _pointer_pos(event: InputEvent) -> Vector2:
-	## Map event into this Control's local space (SplitContainer-safe).
-	var local_ev := make_input_local(event)
-	if local_ev is InputEventMouse:
-		return (local_ev as InputEventMouse).position
+	## _gui_input already delivers local coords; do not make_input_local again
+	## (that desynced hits so left-click never entered the plot).
+	if event is InputEventMouse:
+		return (event as InputEventMouse).position
 	return get_local_mouse_position()
 
 
@@ -502,19 +502,23 @@ func _gui_input(event: InputEvent) -> void:
 				_drag = Drag.NONE
 				accept_event()
 		elif mb.button_index == MOUSE_BUTTON_LEFT:
-			if mb.pressed and _plot.has_point(mouse):
+			# Hit-test by Y band + clamp X into plot (more forgiving than has_point).
+			var in_plot_y := mouse.y >= _plot.position.y and mouse.y <= _plot.position.y + _plot.size.y
+			if mb.pressed and in_plot_y and _plot.size.x > 1.0:
 				_drag = Drag.SELECT
-				_drag_anchor_x = mouse.x
+				var x := clampf(mouse.x, _plot.position.x, _plot.position.x + _plot.size.x)
+				_drag_anchor_x = x
 				_select_moved = false
-				_sel_px0 = mouse.x
-				_sel_px1 = mouse.x
-				_sel_t0 = _x_to_t(mouse.x)
+				_sel_px0 = x
+				_sel_px1 = x
+				_sel_t0 = _x_to_t(x)
 				_sel_t1 = _sel_t0
 				_feed_face_at_time(_sel_t0)
 				queue_redraw()
 				accept_event()
 			elif not mb.pressed and _drag == Drag.SELECT:
-				_finish_select(mouse.x)
+				var x := clampf(mouse.x, _plot.position.x, _plot.position.x + _plot.size.x)
+				_finish_select(x)
 				accept_event()
 	elif event is InputEventMouseMotion:
 		if _drag == Drag.PAN:
