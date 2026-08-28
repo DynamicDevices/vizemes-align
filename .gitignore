@@ -17,6 +17,7 @@ gdextension/**/*.os
 gdextension/godot/bin/
 godot-demo/.godot/
 export/ci-smoke/demo_row0.f32
+export/debug/
 
 .cursor/*
 !.cursor/rules/
