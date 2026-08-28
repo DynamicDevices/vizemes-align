@@ -23,7 +23,8 @@ var _orbit_last := Vector2.ZERO
 var _pivot := Vector3(0.0, 1.74, 0.09)
 var _cam_dist := 0.18
 ## Extra pivot Y (metres) from the mouth-height slider — Julian feedback.
-var _mouth_y_off := 0.0
+const MOUTH_Y_OFF_DEFAULT := 0.025
+var _mouth_y_off := MOUTH_Y_OFF_DEFAULT
 var _height_slider: VSlider
 var _height_lbl: Label
 var _manual_ovr := PackedFloat32Array()
@@ -112,7 +113,7 @@ func _build_mouth_height_ui() -> void:
 	_height_slider.min_value = -0.15
 	_height_slider.max_value = 0.15
 	_height_slider.step = 0.005
-	_height_slider.value = 0.0
+	_height_slider.value = MOUTH_Y_OFF_DEFAULT
 	_height_slider.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_height_slider.tooltip_text = "Mouth height"
 	_height_slider.value_changed.connect(_on_mouth_height_changed)
