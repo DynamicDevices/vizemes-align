@@ -3,12 +3,12 @@
 [ext_resource type="Script" path="res://face_panel.gd" id="1"]
 
 [node name="FacePanel" type="Control"]
-custom_minimum_size = Vector2(280, 220)
+custom_minimum_size = Vector2(280, 180)
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("1")
 
-[node name="VSplit" type="VSplitContainer" parent="."]
+[node name="HSplit" type="HSplitContainer" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -17,11 +17,17 @@ grow_horizontal = 2
 grow_vertical = 2
 split_offset = 220
 
-[node name="ViewWrap" type="Control" parent="VSplit"]
+[node name="BlendBars" type="Control" parent="HSplit"]
+custom_minimum_size = Vector2(180, 0)
 layout_mode = 2
-size_flags_vertical = 3
+size_flags_horizontal = 3
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="VSplit/ViewWrap"]
+[node name="ViewWrap" type="Control" parent="HSplit"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 1.6
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplit/ViewWrap"]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
@@ -31,13 +37,9 @@ grow_vertical = 2
 stretch = true
 mouse_filter = 0
 
-[node name="SubViewport" type="SubViewport" parent="VSplit/ViewWrap/SubViewportContainer"]
+[node name="SubViewport" type="SubViewport" parent="HSplit/ViewWrap/SubViewportContainer"]
 handle_input_locally = true
 size = Vector2i(640, 360)
 render_target_update_mode = 4
 
-[node name="World" type="Node3D" parent="VSplit/ViewWrap/SubViewportContainer/SubViewport"]
-
-[node name="BlendBars" type="Control" parent="VSplit"]
-custom_minimum_size = Vector2(0, 110)
-layout_mode = 2
+[node name="World" type="Node3D" parent="HSplit/ViewWrap/SubViewportContainer/SubViewport"]

@@ -1,36 +1,37 @@
 extends Control
-## Quality UI face: RPM mouth close-up + orbit + live blendshape bars.
+## Quality UI face: RPM mouth close-up + orbit + live blendshape bars (left).
 
 const VisemeFaceScript := preload("res://viseme_face.gd")
 const OVR := [
 	"sil", "PP", "FF", "TH", "DD", "kk", "CH", "SS", "nn", "RR", "aa", "E", "I", "O", "U", "LA"
 ]
 
-@onready var _split: VSplitContainer = $VSplit
-@onready var _viewport: SubViewport = $VSplit/ViewWrap/SubViewportContainer/SubViewport
-@onready var _face_host: Node3D = $VSplit/ViewWrap/SubViewportContainer/SubViewport/World
-@onready var _bars: Control = $VSplit/BlendBars
-@onready var _view_wrap: Control = $VSplit/ViewWrap
-@onready var _svc: SubViewportContainer = $VSplit/ViewWrap/SubViewportContainer
+@onready var _split: HSplitContainer = $HSplit
+@onready var _viewport: SubViewport = $HSplit/ViewWrap/SubViewportContainer/SubViewport
+@onready var _face_host: Node3D = $HSplit/ViewWrap/SubViewportContainer/SubViewport/World
+@onready var _bars: Control = $HSplit/BlendBars
+@onready var _view_wrap: Control = $HSplit/ViewWrap
+@onready var _svc: SubViewportContainer = $HSplit/ViewWrap/SubViewportContainer
 
 var viseme_face: Node3D
 var _cam: Camera3D
 var _yaw := 0.0
-var _pitch := 5.0
+## Slight look-down so mouth sits in frame centre (not chest).
+var _pitch := -8.0
 var _orbiting := false
 var _orbit_last := Vector2.ZERO
-## Mouth focus (RPM head metres).
-var _pivot := Vector3(0.0, 1.48, 0.02)
-var _cam_dist := 0.32
+## Mouth / lower-nose focus (RPM head metres) — was 1.48 (chest-ish).
+var _pivot := Vector3(0.0, 1.62, 0.04)
+var _cam_dist := 0.26
 var _manual_ovr := PackedFloat32Array()
 var _bar_drag := -1
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(280, 200)
+	custom_minimum_size = Vector2(280, 180)
 	_manual_ovr.resize(OVR.size())
 	_cam = Camera3D.new()
-	_cam.fov = 28.0
+	_cam.fov = 26.0
 	_face_host.add_child(_cam)
 	_apply_camera()
 
@@ -88,7 +89,7 @@ func _apply_camera() -> void:
 	if _cam == null:
 		return
 	var yaw_r := deg_to_rad(_yaw)
-	var pitch_r := deg_to_rad(clampf(_pitch, -18.0, 25.0))
+	var pitch_r := deg_to_rad(clampf(_pitch, -25.0, 20.0))
 	var offset := Vector3(
 		sin(yaw_r) * cos(pitch_r),
 		sin(pitch_r),
@@ -110,11 +111,11 @@ func _on_view_gui_input(event: InputEvent) -> void:
 				_orbiting = false
 				_svc.accept_event()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_cam_dist = clampf(_cam_dist * 0.9, 0.18, 0.7)
+			_cam_dist = clampf(_cam_dist * 0.9, 0.14, 0.55)
 			_apply_camera()
 			_svc.accept_event()
 		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_cam_dist = clampf(_cam_dist * 1.1, 0.18, 0.7)
+			_cam_dist = clampf(_cam_dist * 1.1, 0.14, 0.55)
 			_apply_camera()
 			_svc.accept_event()
 	elif event is InputEventMouseMotion and _orbiting:
@@ -122,7 +123,7 @@ func _on_view_gui_input(event: InputEvent) -> void:
 		var d := mm.position - _orbit_last
 		_orbit_last = mm.position
 		_yaw = clampf(_yaw - d.x * 0.35, -55.0, 55.0)
-		_pitch = clampf(_pitch + d.y * 0.25, -18.0, 25.0)
+		_pitch = clampf(_pitch + d.y * 0.25, -25.0, 20.0)
 		_apply_camera()
 		_svc.accept_event()
 
@@ -142,13 +143,16 @@ func set_visemes(vv: Variant) -> void:
 		_bars.queue_redraw()
 
 
-func _bar_rect(i: int) -> Rect2:
+func _bar_row(i: int) -> Rect2:
+	## Horizontal bar rows for a tall left column.
 	var r := _bars.size
 	var n := float(OVR.size())
+	var top := 22.0
 	var gap := 2.0
-	var w := maxf(4.0, (r.x - gap * (n + 1.0)) / n)
-	var x := gap + float(i) * (w + gap)
-	return Rect2(x, 18.0, w, maxf(8.0, r.y - 36.0))
+	var h := maxf(8.0, (r.y - top - 8.0 - gap * (n - 1.0)) / n)
+	var y := top + float(i) * (h + gap)
+	var label_w := 36.0
+	return Rect2(label_w, y, maxf(8.0, r.x - label_w - 8.0), h)
 
 
 func _draw_bars() -> void:
@@ -156,23 +160,22 @@ func _draw_bars() -> void:
 	_bars.draw_rect(Rect2(Vector2.ZERO, r), Color(0.10, 0.11, 0.13))
 	_bars.draw_string(
 		ThemeDB.fallback_font, Vector2(6, 14),
-		"blendshapes (drag) — tune hardener by eye",
+		"blendshapes (drag)",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.78, 0.85)
 	)
 	for i in OVR.size():
-		var br := _bar_rect(i)
+		var br := _bar_row(i)
+		_bars.draw_string(
+			ThemeDB.fallback_font,
+			Vector2(4.0, br.position.y + br.size.y * 0.75),
+			OVR[i],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.7, 0.72, 0.78)
+		)
 		_bars.draw_rect(br, Color(0.18, 0.19, 0.22))
-		var h := br.size.y * (_manual_ovr[i] if i < _manual_ovr.size() else 0.0)
-		var fill := Rect2(br.position.x, br.position.y + br.size.y - h, br.size.x, h)
+		var w := br.size.x * (_manual_ovr[i] if i < _manual_ovr.size() else 0.0)
+		var fill := Rect2(br.position.x, br.position.y, w, br.size.y)
 		var col := Color(0.35, 0.75, 0.95) if i != 0 else Color(0.5, 0.5, 0.55)
 		_bars.draw_rect(fill, col)
-		if br.size.x >= 10.0:
-			_bars.draw_string(
-				ThemeDB.fallback_font,
-				Vector2(br.position.x, r.y - 4.0),
-				OVR[i],
-				HORIZONTAL_ALIGNMENT_LEFT, -1, 9, Color(0.7, 0.72, 0.78)
-			)
 
 
 func _on_bars_gui_input(event: InputEvent) -> void:
@@ -182,25 +185,27 @@ func _on_bars_gui_input(event: InputEvent) -> void:
 			if mb.pressed:
 				_bar_drag = _hit_bar(mb.position)
 				if _bar_drag >= 0:
-					_set_bar_from_y(_bar_drag, mb.position.y)
+					_set_bar_from_x(_bar_drag, mb.position.x)
 					_bars.accept_event()
 			else:
 				_bar_drag = -1
 	elif event is InputEventMouseMotion and _bar_drag >= 0:
-		_set_bar_from_y(_bar_drag, (event as InputEventMouseMotion).position.y)
+		_set_bar_from_x(_bar_drag, (event as InputEventMouseMotion).position.x)
 		_bars.accept_event()
 
 
 func _hit_bar(p: Vector2) -> int:
 	for i in OVR.size():
-		if _bar_rect(i).has_point(p):
+		var br := _bar_row(i)
+		var hit := Rect2(0.0, br.position.y, _bars.size.x, br.size.y)
+		if hit.has_point(p):
 			return i
 	return -1
 
 
-func _set_bar_from_y(i: int, y: float) -> void:
-	var br := _bar_rect(i)
-	var u := 1.0 - clampf((y - br.position.y) / maxf(1.0, br.size.y), 0.0, 1.0)
+func _set_bar_from_x(i: int, x: float) -> void:
+	var br := _bar_row(i)
+	var u := clampf((x - br.position.x) / maxf(1.0, br.size.x), 0.0, 1.0)
 	_manual_ovr.resize(OVR.size())
 	_manual_ovr[i] = u
 	if viseme_face != null and viseme_face.has_method("set_visemes"):
