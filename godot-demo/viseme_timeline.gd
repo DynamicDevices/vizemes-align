@@ -55,8 +55,11 @@ var _plot := Rect2()
 
 var _drag := Drag.NONE
 var _drag_anchor_x := 0.0
+var _select_moved := false
 var _pan_view_t0 := 0.0
 var _pan_view_t1 := 0.0
+## Pixels of horizontal travel before a left-click becomes a range select.
+const SELECT_DRAG_PX := 4.0
 
 var _player: AudioStreamPlayer
 var _gen: AudioStreamGenerator
@@ -355,6 +358,8 @@ func _gui_input(event: InputEvent) -> void:
 			if mb.pressed and _plot.has_point(mouse):
 				_drag = Drag.SELECT
 				_drag_anchor_x = mouse.x
+				_select_moved = false
+				# Click = caret (vertical line). Range only after drag past SELECT_DRAG_PX.
 				_sel_t0 = _x_to_t(_drag_anchor_x)
 				_sel_t1 = _sel_t0
 				queue_redraw()
@@ -371,25 +376,31 @@ func _gui_input(event: InputEvent) -> void:
 			queue_redraw()
 			accept_event()
 		elif _drag == Drag.SELECT:
-			_sel_t0 = _x_to_t(_drag_anchor_x)
-			_sel_t1 = _x_to_t(mouse.x)
-			queue_redraw()
+			if not _select_moved and absf(mouse.x - _drag_anchor_x) >= SELECT_DRAG_PX:
+				_select_moved = true
+			if _select_moved:
+				_sel_t0 = _x_to_t(_drag_anchor_x)
+				_sel_t1 = _x_to_t(mouse.x)
+				queue_redraw()
 			accept_event()
 	elif event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
 
 
 func _finish_select(mouse_x: float) -> void:
-	_sel_t0 = _x_to_t(_drag_anchor_x)
-	_sel_t1 = _x_to_t(mouse_x)
 	_drag = Drag.NONE
-	if absf(_sel_t1 - _sel_t0) < 0.02:
-		_sel_t0 = -1.0
-		_sel_t1 = -1.0
-	elif _sel_t0 > _sel_t1:
-		var tmp := _sel_t0
-		_sel_t0 = _sel_t1
-		_sel_t1 = tmp
+	if not _select_moved and absf(mouse_x - _drag_anchor_x) < SELECT_DRAG_PX:
+		# Pure click: keep a zero-width caret at the press point.
+		_sel_t0 = _x_to_t(_drag_anchor_x)
+		_sel_t1 = _sel_t0
+	else:
+		_sel_t0 = _x_to_t(_drag_anchor_x)
+		_sel_t1 = _x_to_t(mouse_x)
+		if _sel_t0 > _sel_t1:
+			var tmp := _sel_t0
+			_sel_t0 = _sel_t1
+			_sel_t1 = tmp
+	_select_moved = false
 	queue_redraw()
 
 
@@ -565,10 +576,20 @@ func _draw_selection() -> void:
 		return
 	var sx0 := _t_to_x(mini(_sel_t0, _sel_t1))
 	var sx1 := _t_to_x(maxf(_sel_t0, _sel_t1))
-	draw_rect(
-		Rect2(sx0, _plot.position.y, maxf(1.0, sx1 - sx0), _plot.size.y),
-		Color(0.95, 0.85, 0.2, 0.18)
-	)
+	var w := sx1 - sx0
+	if w < 1.5:
+		# Click caret: crisp vertical line at the pointer.
+		draw_line(
+			Vector2(sx0, _plot.position.y),
+			Vector2(sx0, _plot.position.y + _plot.size.y),
+			Color(0.95, 0.85, 0.2, 0.95),
+			2.0
+		)
+	else:
+		draw_rect(
+			Rect2(sx0, _plot.position.y, w, _plot.size.y),
+			Color(0.95, 0.85, 0.2, 0.18)
+		)
 
 
 func _draw_mfa_boxes() -> void:
@@ -638,11 +659,14 @@ func _draw_time_axis(curve_top: float, curve_h: float) -> void:
 		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 48.0, ty), "%.2fs" % _view_t1,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
-	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0 and absf(_sel_t1 - _sel_t0) >= 0.02:
+	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
+		var sel_label := "caret %.2fs" % _sel_t0
+		if absf(_sel_t1 - _sel_t0) >= 0.02:
+			sel_label = "sel %.2f–%.2fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
 		draw_string(
 			ThemeDB.fallback_font,
 			Vector2(_plot.position.x + _plot.size.x * 0.35, ty),
-			"sel %.2f–%.2fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)],
+			sel_label,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.85, 0.35)
 		)
 
