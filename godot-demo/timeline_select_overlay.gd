@@ -151,12 +151,13 @@ func _zoom_at(x: float, factor: float) -> void:
 	host.set("_view_t0", t_focus - left_frac * span)
 	host.set("_view_t1", float(host.get("_view_t0")) + span)
 	host.call("_clamp_view")
-	# Keep caret pixel under the same time if present.
-	if sel_px0 >= 0.0 and absf(sel_px1 - sel_px0) < SELECT_DRAG_PX:
-		var t := _x_to_t(sel_px0) # old mapping already applied before view change — recompute from stored times via host
-		var ht0 := float(host.get("_sel_t0"))
-		if ht0 >= 0.0:
-			sel_px0 = _t_to_x(ht0)
+	# Re-pin caret pixels to stored times after view change.
+	var ht0 := float(host.get("_sel_t0"))
+	var ht1 := float(host.get("_sel_t1"))
+	if ht0 >= 0.0:
+		sel_px0 = _t_to_x(ht0)
+		sel_px1 = _t_to_x(ht1) if ht1 >= 0.0 else sel_px0
+		if absf(ht1 - ht0) < CARET_EPS_S:
 			sel_px1 = sel_px0
 	view_changed.emit()
 	host.queue_redraw()
