@@ -53,6 +53,31 @@ def phones_from_textgrid(tg_path: Path) -> list[dict]:
     return out
 
 
+def words_from_textgrid(tg_path: Path) -> list[dict]:
+    """MFA words tier → [{start, end, word}, ...] (empty if no words tier)."""
+    tg = textgrid.TextGrid.fromFile(str(tg_path))
+    tier = None
+    for t in tg.tiers:
+        if t.name.lower() in ("words", "word"):
+            tier = t
+            break
+    if tier is None or not hasattr(tier, "intervals"):
+        return []
+    out: list[dict] = []
+    for iv in tier.intervals:
+        lab = (iv.mark or "").strip()
+        if not lab:
+            continue
+        out.append(
+            {
+                "start": round(float(iv.minTime), 4),
+                "end": round(float(iv.maxTime), 4),
+                "word": lab,
+            }
+        )
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--subset", default="test-clean")
