@@ -1,20 +1,21 @@
 extends Node
 ## Live mic → push_pcm_contexts → ONNX → VisemeSystem or Stub (editor / GUI run).
+## Godot 4.6+: AudioServer.get_input_frames + get_input_mix_rate (no capture bus).
 
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
-const RECORD_BUS := "VizemesRecord"
 const TARGET_RATE := 16000
+## Max frames to pull per tick (keeps _process bounded).
+const PULL_MAX := 4096
 
-@onready var _player: AudioStreamPlayer = $AudioStreamPlayer
 @onready var _label: Label = $Label
 
-var _capture: AudioEffectCapture
 var _pipe
 var _target: Node
 var _frames: int = 0
 var _last_ovr: PackedFloat32Array = PackedFloat32Array()
+var _input_ok := false
 
 
 func _ready() -> void:
@@ -36,39 +37,45 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	_pipe.begin_stream()
-	_setup_record_bus()
-	_player.stream = AudioStreamMicrophone.new()
-	_player.bus = RECORD_BUS
-	_player.play()
-	_label.text = "Listening… (mic → visemes via %s)" % _target.name
 
-
-func _setup_record_bus() -> void:
-	if AudioServer.get_bus_index(RECORD_BUS) >= 0:
-		var idx := AudioServer.get_bus_index(RECORD_BUS)
-		_capture = AudioServer.get_bus_effect(idx, 0) as AudioEffectCapture
+	# Direct mic buffer (Godot 4.6). Needs ProjectSettings audio/driver/enable_input.
+	if not ProjectSettings.get_setting("audio/driver/enable_input", false):
+		ProjectSettings.set_setting("audio/driver/enable_input", true)
+	AudioServer.input_device = "Default"
+	var err := AudioServer.set_input_device_active(true)
+	_input_ok = err == OK
+	if not _input_ok:
+		_label.text = "Mic input failed (check OS permission / audio/driver/enable_input)"
+		push_error("AudioServer.set_input_device_active(true) → %s" % error_string(err))
 		return
-	AudioServer.add_bus()
-	var idx := AudioServer.bus_count - 1
-	AudioServer.set_bus_name(idx, RECORD_BUS)
-	_capture = AudioEffectCapture.new()
-	AudioServer.add_bus_effect(idx, _capture)
+	_label.text = "Listening… (mic → visemes via %s @ %.0f Hz in)" % [
+		_target.name, AudioServer.get_input_mix_rate()
+	]
+
+
+func _exit_tree() -> void:
+	if _input_ok:
+		AudioServer.set_input_device_active(false)
 
 
 func _process(_delta: float) -> void:
-	if _capture == null or _pipe == null or _target == null:
+	if not _input_ok or _pipe == null or _target == null:
 		return
-	var avail := _capture.get_frames_available()
+	var avail := AudioServer.get_input_frames_available()
 	if avail <= 0:
 		return
-	var buffer: PackedVector2Array = _capture.get_buffer(avail)
+	var n := mini(avail, PULL_MAX)
+	var buffer: PackedVector2Array = AudioServer.get_input_frames(n)
+	if buffer.is_empty():
+		return
 	var pcm := VisemeUtils.stereo_to_mono(buffer)
-	pcm = VisemeUtils.resample_pcm(pcm, int(AudioServer.get_mix_rate()), TARGET_RATE)
+	var in_rate := int(round(AudioServer.get_input_mix_rate()))
+	pcm = VisemeUtils.resample_pcm(pcm, in_rate, TARGET_RATE)
 	_frames += _pipe.feed_pcm_mono_16k(pcm, _target)
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
 	if _last_ovr.size() > 0:
 		var top := VisemeUtils.argmax(_last_ovr)
-		_label.text = "viseme=%s  frames=%d  via=%s" % [
-			VisemeUtils.OVR_NAMES[top], _frames, _target.name
+		_label.text = "viseme=%s  frames=%d  via=%s  in=%.0fHz" % [
+			VisemeUtils.OVR_NAMES[top], _frames, _target.name, AudioServer.get_input_mix_rate()
 		]
