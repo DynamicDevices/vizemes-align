@@ -6,9 +6,10 @@ extends Control
 const VisemeUtils := preload("res://viseme_utils.gd")
 const ClipProbeIo := preload("res://clip_probe_io.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
+const TimelineSelectOverlay := preload("res://timeline_select_overlay.gd")
 const SAMPLE_RATE := 16000
-
-enum Drag { NONE, PAN, SELECT }
+## Single-caret Space play: ± this many seconds around the caret.
+const CARET_PLAY_PAD_S := 0.15
 
 ## Distinct colours for the 15 model classes (silence … ou).
 const LINE_COLORS: Array[Color] = [
@@ -56,20 +57,7 @@ var _view_t1 := 1.0
 var _sel_t0 := -1.0
 var _sel_t1 := -1.0
 var _plot := Rect2()
-
-var _drag := Drag.NONE
-var _drag_anchor_x := 0.0
-var _select_moved := false
-var _pan_view_t0 := 0.0
-var _pan_view_t1 := 0.0
-## Pixel x of caret / selection edges (draw uses these so caret matches the click).
-var _sel_px0 := -1.0
-var _sel_px1 := -1.0
-## Pixels of horizontal travel before a left-click becomes a range select.
-## Higher than typical click jitter so yellow band doesn't appear left of the pointer.
-const SELECT_DRAG_PX := 12.0
-## If release span is under this (seconds), snap to a caret (no yellow band).
-const SELECT_CARET_S := 0.05
+var _overlay: Control
 
 var _player: AudioStreamPlayer
 var _gen: AudioStreamGenerator
@@ -99,24 +87,52 @@ func _is_headless() -> bool:
 
 func _ready() -> void:
 	_quit_on_done = _is_headless()
-	# Scene already full-rect; ensure grow + input in editor.
 	grow_horizontal = Control.GROW_DIRECTION_BOTH
 	grow_vertical = Control.GROW_DIRECTION_BOTH
+	# Stem bar + keys on this node; plot pointing lives on the overlay child.
 	mouse_filter = Control.MOUSE_FILTER_STOP if not _quit_on_done else Control.MOUSE_FILTER_IGNORE
 	focus_mode = Control.FOCUS_ALL
 	resized.connect(_on_resized)
 	if not _quit_on_done:
 		_build_stem_bar()
 		_resolve_face()
+		_ensure_select_overlay()
 	var code := _load_and_run()
 	if not _quit_on_done:
 		_setup_audio()
 		grab_focus()
 	_refresh_plot_rect()
+	_layout_select_overlay()
 	queue_redraw()
 	if _quit_on_done:
 		await get_tree().process_frame
 		get_tree().quit(code)
+
+
+func _ensure_select_overlay() -> void:
+	if _overlay != null:
+		return
+	_overlay = TimelineSelectOverlay.new()
+	_overlay.name = "SelectOverlay"
+	_overlay.host = self
+	_overlay.selection_changed.connect(_on_overlay_selection)
+	_overlay.view_changed.connect(func(): queue_redraw())
+	add_child(_overlay)
+
+
+func _layout_select_overlay() -> void:
+	if _overlay == null:
+		return
+	_refresh_plot_rect()
+	_overlay.position = _plot.position
+	_overlay.size = _plot.size
+	_overlay.queue_redraw()
+
+
+func _on_overlay_selection(t0: float, t1: float) -> void:
+	_sel_t0 = t0
+	_sel_t1 = t1
+	queue_redraw()
 
 
 func _resolve_face() -> void:
@@ -195,7 +211,7 @@ func _build_stem_bar() -> void:
 	bar.add_child(_rec_btn)
 
 	_ui_top = 44.0
-	_help = "stem+Load  Record  wheel=zoom  mid=pan  left=select  Space=play  A/B  D  H  Esc"
+	_help = "wheel=zoom  mid=pan  left=caret/sel  Space=±150ms@caret  A/B  D  H  Esc"
 
 
 func _on_stem_load() -> void:
@@ -227,6 +243,7 @@ func _on_stem_load() -> void:
 
 func _on_resized() -> void:
 	_refresh_plot_rect()
+	_layout_select_overlay()
 	queue_redraw()
 
 
@@ -283,8 +300,8 @@ func _finish_recording() -> void:
 		_view_t1 = _duration_s
 		_sel_t0 = -1.0
 		_sel_t1 = -1.0
-		_sel_px0 = -1.0
-		_sel_px1 = -1.0
+		if _overlay != null and _overlay.has_method("clear_selection"):
+			_overlay.clear_selection()
 		_play_i = 0
 		_play_end = 0
 		_feed_face_at_time(0.0)
@@ -479,97 +496,12 @@ func _clamp_view() -> void:
 		_view_t0 = maxf(0.0, _view_t1 - span)
 
 
-func _pointer_pos(event: InputEvent) -> Vector2:
-	## _gui_input already delivers local coords; do not make_input_local again
-	## (that desynced hits so left-click never entered the plot).
-	if event is InputEventMouse:
-		return (event as InputEventMouse).position
-	return get_local_mouse_position()
-
-
 func _gui_input(event: InputEvent) -> void:
+	## Mouse pan/zoom/select is on SelectOverlay; this node only handles keys.
 	if _quit_on_done:
 		return
-	var mouse := _pointer_pos(event)
-	if event is InputEventMouseButton:
-		var mb := event as InputEventMouseButton
-		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
-			_zoom_at(mouse.x, 0.85)
-			accept_event()
-		elif mb.button_index == MOUSE_BUTTON_WHEEL_DOWN and mb.pressed:
-			_zoom_at(mouse.x, 1.15)
-			accept_event()
-		elif mb.button_index == MOUSE_BUTTON_MIDDLE:
-			if mb.pressed and _plot.has_point(mouse):
-				_drag = Drag.PAN
-				_drag_anchor_x = mouse.x
-				_pan_view_t0 = _view_t0
-				_pan_view_t1 = _view_t1
-				accept_event()
-			elif not mb.pressed and _drag == Drag.PAN:
-				_drag = Drag.NONE
-				accept_event()
-		elif mb.button_index == MOUSE_BUTTON_LEFT:
-			# Hit-test by Y band + clamp X into plot (more forgiving than has_point).
-			var in_plot_y := mouse.y >= _plot.position.y and mouse.y <= _plot.position.y + _plot.size.y
-			if mb.pressed and in_plot_y and _plot.size.x > 1.0:
-				_drag = Drag.SELECT
-				var x := clampf(mouse.x, _plot.position.x, _plot.position.x + _plot.size.x)
-				_drag_anchor_x = x
-				_select_moved = false
-				_sel_px0 = x
-				_sel_px1 = x
-				_sel_t0 = _x_to_t(x)
-				_sel_t1 = _sel_t0
-				_feed_face_at_time(_sel_t0)
-				queue_redraw()
-				accept_event()
-			elif not mb.pressed and _drag == Drag.SELECT:
-				var x := clampf(mouse.x, _plot.position.x, _plot.position.x + _plot.size.x)
-				_finish_select(x)
-				accept_event()
-	elif event is InputEventMouseMotion:
-		if _drag == Drag.PAN:
-			var dt := (_drag_anchor_x - mouse.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
-			_view_t0 = _pan_view_t0 + dt
-			_view_t1 = _pan_view_t1 + dt
-			_clamp_view()
-			queue_redraw()
-			accept_event()
-		elif _drag == Drag.SELECT:
-			if not _select_moved and absf(mouse.x - _drag_anchor_x) >= SELECT_DRAG_PX:
-				_select_moved = true
-			if _select_moved:
-				_sel_px0 = mini(_drag_anchor_x, mouse.x)
-				_sel_px1 = maxf(_drag_anchor_x, mouse.x)
-				_sel_t0 = _x_to_t(_sel_px0)
-				_sel_t1 = _x_to_t(_sel_px1)
-				queue_redraw()
-			accept_event()
-	elif event is InputEventKey and event.pressed and not event.echo:
+	if event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
-
-
-func _finish_select(mouse_x: float) -> void:
-	_drag = Drag.NONE
-	var px := absf(mouse_x - _drag_anchor_x)
-	var t_press := _x_to_t(_drag_anchor_x)
-	var t_rel := _x_to_t(mouse_x)
-	var dt := absf(t_rel - t_press)
-	# Pure click or tiny drag: caret at the press pixel (not a quantized time).
-	if (not _select_moved) or px < SELECT_DRAG_PX or dt < SELECT_CARET_S:
-		_sel_px0 = _drag_anchor_x
-		_sel_px1 = _drag_anchor_x
-		_sel_t0 = t_press
-		_sel_t1 = t_press
-	else:
-		_sel_px0 = mini(_drag_anchor_x, mouse_x)
-		_sel_px1 = maxf(_drag_anchor_x, mouse_x)
-		_sel_t0 = _x_to_t(_sel_px0)
-		_sel_t1 = _x_to_t(_sel_px1)
-	_select_moved = false
-	_feed_face_at_time(_sel_t0)
-	queue_redraw()
 
 
 func _handle_key(key: InputEventKey) -> void:
@@ -581,14 +513,16 @@ func _handle_key(key: InputEventKey) -> void:
 			_stop_playback()
 			_sel_t0 = -1.0
 			_sel_t1 = -1.0
-			_sel_px0 = -1.0
-			_sel_px1 = -1.0
+			if _overlay != null and _overlay.has_method("clear_selection"):
+				_overlay.clear_selection()
 			queue_redraw()
 			accept_event()
 		KEY_R:
 			_view_t0 = 0.0
 			_view_t1 = _duration_s
 			queue_redraw()
+			if _overlay != null:
+				_overlay.queue_redraw()
 			accept_event()
 		KEY_A:
 			_show_a = not _show_a
@@ -609,6 +543,7 @@ func _handle_key(key: InputEventKey) -> void:
 
 
 func _zoom_at(x: float, factor: float) -> void:
+	## Kept for compatibility; overlay owns zoom in the editor.
 	var t_focus := _x_to_t(x)
 	var span := _view_span() * factor
 	span = clampf(span, 0.05, maxf(0.05, _duration_s))
@@ -624,10 +559,15 @@ func _play_selection() -> void:
 		return
 	var a := _sel_t0
 	var b := _sel_t1
-	if a < 0.0 or b < 0.0 or absf(b - a) < 0.02:
-		# No selection: play the visible window.
+	if a < 0.0 or b < 0.0:
+		# No caret/range: play the visible window.
 		a = _view_t0
 		b = _view_t1
+	elif absf(b - a) < 0.02:
+		# Single caret → ±150 ms (not the whole clip / view).
+		var t := a
+		a = t - CARET_PLAY_PAD_S
+		b = t + CARET_PLAY_PAD_S
 	if a > b:
 		var tmp := a
 		a = b
@@ -643,7 +583,7 @@ func _play_selection() -> void:
 	_playback = _player.get_stream_playback() as AudioStreamGeneratorPlayback
 	_playing = _playback != null
 	if _playing:
-		_status = "playing %.2f–%.2fs" % [a, b]
+		_status = "playing %.3f–%.3fs" % [a, b]
 		queue_redraw()
 
 
@@ -699,11 +639,12 @@ func _process(_delta: float) -> void:
 
 func _draw() -> void:
 	_refresh_plot_rect()
+	_layout_select_overlay()
 	var r := _canvas_size()
 	_draw_chrome(r)
 	if _duration_s <= 0.0:
 		return
-	_draw_selection()
+	# Selection caret/band is drawn by SelectOverlay (translucent child).
 	_draw_mfa_boxes()
 	_draw_disagree_ribbon()
 	_draw_hard_ribbon()
@@ -758,31 +699,6 @@ func _draw_chrome(r: Vector2) -> void:
 		draw_string(
 			ThemeDB.fallback_font, Vector2(12, r.y - 12), _help,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.55, 0.6, 0.65)
-		)
-
-
-func _draw_selection() -> void:
-	if _sel_t0 < 0.0 or _sel_t1 < 0.0:
-		return
-	# Prefer stored click pixels so the caret sits under the pointer (no x↔t drift).
-	var sx0 := _sel_px0 if _sel_px0 >= 0.0 else _t_to_x(mini(_sel_t0, _sel_t1))
-	var sx1 := _sel_px1 if _sel_px1 >= 0.0 else _t_to_x(maxf(_sel_t0, _sel_t1))
-	if sx1 < sx0:
-		var tmp := sx0
-		sx0 = sx1
-		sx1 = tmp
-	var w := sx1 - sx0
-	if w < SELECT_DRAG_PX or absf(_sel_t1 - _sel_t0) < SELECT_CARET_S:
-		draw_line(
-			Vector2(sx0, _plot.position.y),
-			Vector2(sx0, _plot.position.y + _plot.size.y),
-			Color(0.95, 0.85, 0.2, 0.95),
-			2.0
-		)
-	else:
-		draw_rect(
-			Rect2(sx0, _plot.position.y, w, _plot.size.y),
-			Color(0.95, 0.85, 0.2, 0.18)
 		)
 
 
@@ -868,20 +784,20 @@ func _draw_time_axis(curve_top: float, curve_h: float) -> void:
 	)
 	var ty := _plot.position.y + _plot.size.y + 22.0
 	draw_string(
-		ThemeDB.fallback_font, Vector2(_plot.position.x, ty), "%.2fs" % _view_t0,
+		ThemeDB.fallback_font, Vector2(_plot.position.x, ty), "%.3fs" % _view_t0,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	draw_string(
-		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 48.0, ty), "%.2fs" % _view_t1,
+		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 56.0, ty), "%.3fs" % _view_t1,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
-		var sel_label := "caret %.2fs" % _sel_t0
+		var sel_label := "caret %.3fs (±150ms play)" % _sel_t0
 		if absf(_sel_t1 - _sel_t0) >= 0.02:
-			sel_label = "sel %.2f–%.2fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
+			sel_label = "sel %.3f–%.3fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
 		draw_string(
 			ThemeDB.fallback_font,
-			Vector2(_plot.position.x + _plot.size.x * 0.35, ty),
+			Vector2(_plot.position.x + _plot.size.x * 0.28, ty),
 			sel_label,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.85, 0.35)
 		)
