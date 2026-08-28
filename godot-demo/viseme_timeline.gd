@@ -190,7 +190,7 @@ func _build_stem_bar() -> void:
 
 	_rec_btn = Button.new()
 	_rec_btn.text = "Record 3s"
-	_rec_btn.tooltip_text = "Record mic → rebuild graph + drive 3D face"
+	_rec_btn.tooltip_text = "Mic preview only: ONNX soft/hard curves + face (no MFA / no train-set align)"
 	_rec_btn.pressed.connect(_on_record_pressed)
 	bar.add_child(_rec_btn)
 
@@ -280,13 +280,14 @@ func _finish_recording() -> void:
 	else:
 		_view_t0 = 0.0
 		_view_t1 = _duration_s
-		_status = "recorded %.2fs — Space to play" % _duration_s
+		_status = "recorded %.2fs preview (no MFA) — Space to play" % _duration_s
 	queue_redraw()
 	grab_focus()
 
 
 func _infer_from_pcm() -> int:
-	## Rebuild _series / hard bytes from current _pcm (stem load or mic record).
+	## Live/mic preview only: MelFrontend + ONNX → soft series + hard bytes.
+	## Does NOT run MFA / export_viseme_timeline (train-set alignment stays on Load).
 	if not ClassDB.class_exists("MelFrontend") or not ClassDB.class_exists("OnnxLoader"):
 		push_error("need MelFrontend + OnnxLoader")
 		return 1
@@ -307,6 +308,7 @@ func _infer_from_pcm() -> int:
 	if _series.is_empty():
 		return 1
 	_series_b.clear()
+	# Live clips have no MFA boxes — clear any leftover train-set align overlay.
 	_boxes.clear()
 	_context_frames = 20
 	_hop_s = 0.01

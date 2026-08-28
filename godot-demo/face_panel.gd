@@ -16,24 +16,26 @@ const OVR := [
 var viseme_face: Node3D
 var _cam: Camera3D
 var _yaw := 0.0
-## Slight look-down so mouth sits in frame centre (not chest).
-var _pitch := -8.0
+## Slight look-down so mouth sits in frame centre (not neck/chest).
+var _pitch := -14.0
 var _orbiting := false
 var _orbit_last := Vector2.ZERO
-## Mouth / lower-nose focus (RPM head metres) — was 1.48 (chest-ish).
-var _pivot := Vector3(0.0, 1.62, 0.04)
-var _cam_dist := 0.26
+## Mouth centre (RPM) — higher/closer than neck (≈1.5) or chest.
+var _pivot := Vector3(0.0, 1.70, 0.08)
+var _cam_dist := 0.20
 var _manual_ovr := PackedFloat32Array()
 var _bar_drag := -1
 
 
 func _ready() -> void:
-	custom_minimum_size = Vector2(280, 180)
+	custom_minimum_size = Vector2(280, 140)
 	_manual_ovr.resize(OVR.size())
 	_cam = Camera3D.new()
-	_cam.fov = 26.0
+	_cam.fov = 24.0
 	_face_host.add_child(_cam)
 	_apply_camera()
+	# After avatar loads, snap pivot to head mesh mouth band if possible.
+	call_deferred("_retarget_mouth_pivot")
 
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-40.0, -20.0, 0.0)
@@ -83,6 +85,24 @@ func _add_fallback_label(msg: String) -> void:
 	lbl.font_size = 28
 	lbl.position = _pivot
 	_face_host.add_child(lbl)
+
+
+func _retarget_mouth_pivot() -> void:
+	## Aim at lower third of Wolf3D_Head AABB (mouth), not neck/torso.
+	if viseme_face == null:
+		return
+	var head := viseme_face.find_child("Wolf3D_Head", true, false)
+	if head is MeshInstance3D:
+		var mi := head as MeshInstance3D
+		var aabb: AABB = mi.get_aabb()
+		var local_mouth := aabb.position + Vector3(
+			aabb.size.x * 0.5,
+			aabb.size.y * 0.28,
+			aabb.size.z * 0.75
+		)
+		_pivot = mi.to_global(local_mouth)
+		_cam_dist = clampf(aabb.size.length() * 0.55, 0.14, 0.35)
+		_apply_camera()
 
 
 func _apply_camera() -> void:

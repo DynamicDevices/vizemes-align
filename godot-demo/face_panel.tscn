@@ -3,7 +3,7 @@
 [ext_resource type="Script" path="res://face_panel.gd" id="1"]
 
 [node name="FacePanel" type="Control"]
-custom_minimum_size = Vector2(280, 180)
+custom_minimum_size = Vector2(280, 140)
 layout_mode = 3
 anchors_preset = 0
 script = ExtResource("1")
