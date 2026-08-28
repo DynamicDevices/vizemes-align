@@ -16,12 +16,11 @@ const OVR := [
 var viseme_face: Node3D
 var _cam: Camera3D
 var _yaw := 0.0
-## Look down at mouth from a higher camera (was framing neck).
-var _pitch := -20.0
+## Mild look-down; framing tuned midway between prior neck-low and nose-high.
+var _pitch := -17.0
 var _orbiting := false
 var _orbit_last := Vector2.ZERO
-## Mouth / lower-nose — raised; retarget nudges further from head AABB.
-var _pivot := Vector3(0.0, 1.78, 0.10)
+var _pivot := Vector3(0.0, 1.74, 0.09)
 var _cam_dist := 0.18
 var _manual_ovr := PackedFloat32Array()
 var _bar_drag := -1
