@@ -3,20 +3,21 @@
 [ext_resource type="Script" path="res://viseme_timeline.gd" id="1"]
 [ext_resource type="PackedScene" path="res://face_panel.tscn" id="2"]
 
-[node name="Root" type="HSplitContainer"]
+[node name="Root" type="VSplitContainer"]
 layout_mode = 3
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-split_offset = -340
-
-[node name="VisemeTimeline" type="Control" parent="."]
-layout_mode = 2
-size_flags_horizontal = 3
-size_flags_vertical = 3
-script = ExtResource("1")
+split_offset = 280
 
 [node name="FacePanel" parent="." instance=ExtResource("2")]
 layout_mode = 2
+size_flags_vertical = 3
+
+[node name="VisemeTimeline" type="Control" parent="."]
+layout_mode = 2
+size_flags_vertical = 3
+size_flags_stretch_ratio = 1.4
+script = ExtResource("1")

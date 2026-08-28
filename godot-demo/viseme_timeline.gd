@@ -63,7 +63,10 @@ var _select_moved := false
 var _pan_view_t0 := 0.0
 var _pan_view_t1 := 0.0
 ## Pixels of horizontal travel before a left-click becomes a range select.
-const SELECT_DRAG_PX := 4.0
+## Higher than typical click jitter so yellow band doesn't appear left of the pointer.
+const SELECT_DRAG_PX := 12.0
+## If release span is under this (seconds), snap to a caret (no yellow band).
+const SELECT_CARET_S := 0.05
 
 var _player: AudioStreamPlayer
 var _gen: AudioStreamGenerator
@@ -126,9 +129,12 @@ func _resolve_face() -> void:
 
 
 func _feed_face_at_playhead() -> void:
+	_feed_face_at_time(float(_play_i) / float(SAMPLE_RATE))
+
+
+func _feed_face_at_time(t: float) -> void:
 	if _face == null or _series.is_empty():
 		return
-	var t := float(_play_i) / float(SAMPLE_RATE)
 	var t0 := float(_context_frames - 1) * _hop_s
 	var idx := int(round((t - t0) / _hop_s))
 	idx = clampi(idx, 0, _series.size() - 1)
@@ -463,10 +469,11 @@ func _clamp_view() -> void:
 func _gui_input(event: InputEvent) -> void:
 	if _quit_on_done:
 		return
-	# Local mouse so press/drag share one space (avoids select-start drift).
+	# Prefer event.position (stable Control space) over get_local_mouse_position.
 	var mouse := get_local_mouse_position()
 	if event is InputEventMouseButton:
 		var mb := event as InputEventMouseButton
+		mouse = mb.position
 		if mb.button_index == MOUSE_BUTTON_WHEEL_UP and mb.pressed:
 			_zoom_at(mouse.x, 0.85)
 			accept_event()
@@ -491,12 +498,15 @@ func _gui_input(event: InputEvent) -> void:
 				# Click = caret (vertical line). Range only after drag past SELECT_DRAG_PX.
 				_sel_t0 = _x_to_t(_drag_anchor_x)
 				_sel_t1 = _sel_t0
+				_feed_face_at_time(_sel_t0)
 				queue_redraw()
 				accept_event()
 			elif not mb.pressed and _drag == Drag.SELECT:
-				_finish_select(mouse.x)
+				_finish_select(mb.position.x)
 				accept_event()
 	elif event is InputEventMouseMotion:
+		var mm := event as InputEventMouseMotion
+		mouse = mm.position
 		if _drag == Drag.PAN:
 			var dt := (_drag_anchor_x - mouse.x) / maxf(1.0, _plot.size.x) * (_pan_view_t1 - _pan_view_t0)
 			_view_t0 = _pan_view_t0 + dt
@@ -518,18 +528,19 @@ func _gui_input(event: InputEvent) -> void:
 
 func _finish_select(mouse_x: float) -> void:
 	_drag = Drag.NONE
-	if not _select_moved and absf(mouse_x - _drag_anchor_x) < SELECT_DRAG_PX:
-		# Pure click: keep a zero-width caret at the press point.
-		_sel_t0 = _x_to_t(_drag_anchor_x)
-		_sel_t1 = _sel_t0
+	var t_press := _x_to_t(_drag_anchor_x)
+	var t_rel := _x_to_t(mouse_x)
+	var px := absf(mouse_x - _drag_anchor_x)
+	var dt := absf(t_rel - t_press)
+	# Pure click or tiny drag: caret at press — avoids yellow band left of the pointer.
+	if (not _select_moved and px < SELECT_DRAG_PX) or dt < SELECT_CARET_S or px < SELECT_DRAG_PX:
+		_sel_t0 = t_press
+		_sel_t1 = t_press
 	else:
-		_sel_t0 = _x_to_t(_drag_anchor_x)
-		_sel_t1 = _x_to_t(mouse_x)
-		if _sel_t0 > _sel_t1:
-			var tmp := _sel_t0
-			_sel_t0 = _sel_t1
-			_sel_t1 = tmp
+		_sel_t0 = mini(t_press, t_rel)
+		_sel_t1 = maxf(t_press, t_rel)
 	_select_moved = false
+	_feed_face_at_time(_sel_t0)
 	queue_redraw()
 
 
@@ -724,8 +735,8 @@ func _draw_selection() -> void:
 	var sx0 := _t_to_x(mini(_sel_t0, _sel_t1))
 	var sx1 := _t_to_x(maxf(_sel_t0, _sel_t1))
 	var w := sx1 - sx0
-	if w < 1.5:
-		# Click caret: crisp vertical line at the pointer.
+	# Prefer caret whenever span is sub-threshold (time or pixels).
+	if w < SELECT_DRAG_PX or absf(_sel_t1 - _sel_t0) < SELECT_CARET_S:
 		draw_line(
 			Vector2(sx0, _plot.position.y),
 			Vector2(sx0, _plot.position.y + _plot.size.y),
