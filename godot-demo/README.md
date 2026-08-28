@@ -39,7 +39,7 @@ path (`bash tools/godot_46_ms_ort.sh`) or a stock 4.6 editor binary.
 | `lipsync_smoke.tscn` | `GODOT_LIPSYNC_SMOKE_OK` (mel → ONNX → OVR → VisemeSystem or Stub) |
 | `streaming_smoke.tscn` | `GODOT_STREAMING_SMOKE_OK` (chunked `push_pcm_contexts` → ONNX) |
 | `seek_probe.tscn` | `GODOT_SEEK_PROBE_OK` — seek times vs alignment; mel L2 vs training path (editor OK) |
-| `viseme_timeline.tscn` | Overlay plot: 15 ONNX weight curves + MFA/trained viseme boxes (editor F6) |
+| `viseme_timeline.tscn` | Quality UI: weight curves + **Record 3s** mic + right-hand 3D RPM face (editor F6) |
 | `mic_lipsync.tscn` | Live mic GUI demo (not headless) — Godot 4.6 `AudioServer.get_input_frames` → streaming mel → visemes |
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.

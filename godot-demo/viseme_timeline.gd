@@ -5,6 +5,7 @@ extends Control
 
 const VisemeUtils := preload("res://viseme_utils.gd")
 const ClipProbeIo := preload("res://clip_probe_io.gd")
+const VisemeTarget := preload("res://viseme_target.gd")
 const SAMPLE_RATE := 16000
 
 enum Drag { NONE, PAN, SELECT }
@@ -73,7 +74,13 @@ var _playing := false
 
 var _stem_edit: LineEdit
 var _load_btn: Button
+var _rec_btn: Button
 var _ui_top := 40.0
+var _face: Node ## FacePanel / VisemeSystem
+var _recording := false
+var _rec_pcm := PackedFloat32Array()
+var _rec_frames_left := 0
+var _rec_seconds := 3.0
 
 
 func _repo_root() -> String:
@@ -94,6 +101,7 @@ func _ready() -> void:
 	resized.connect(_on_resized)
 	if not _quit_on_done:
 		_build_stem_bar()
+		_resolve_face()
 	var code := _load_and_run()
 	if not _quit_on_done:
 		_setup_audio()
@@ -103,6 +111,33 @@ func _ready() -> void:
 	if _quit_on_done:
 		await get_tree().process_frame
 		get_tree().quit(code)
+
+
+func _resolve_face() -> void:
+	var parent := get_parent()
+	if parent != null:
+		var panel := parent.get_node_or_null("FacePanel")
+		if panel != null:
+			_face = panel
+			return
+	_face = get_node_or_null("VisemeSystem")
+	if _face == null:
+		_face = get_node_or_null("VisemeSystemStub")
+
+
+func _feed_face_at_playhead() -> void:
+	if _face == null or _series.is_empty():
+		return
+	var t := float(_play_i) / float(SAMPLE_RATE)
+	var t0 := float(_context_frames - 1) * _hop_s
+	var idx := int(round((t - t0) / _hop_s))
+	idx = clampi(idx, 0, _series.size() - 1)
+	var soft: PackedFloat32Array = _series[idx]
+	var ovr := VisemeUtils.mlp_to_ovr(soft, _names)
+	if _face.has_method("set_visemes"):
+		_face.set_visemes(ovr)
+	else:
+		VisemeTarget.feed(_face, ovr)
 
 
 func _build_stem_bar() -> void:
@@ -139,13 +174,19 @@ func _build_stem_bar() -> void:
 	bar.add_child(seek_btn)
 
 	var mic_btn := Button.new()
-	mic_btn.text = "Mic…"
-	mic_btn.tooltip_text = "Live microphone capture"
+	mic_btn.text = "Mic live…"
+	mic_btn.tooltip_text = "Full-screen live mic scene"
 	mic_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://mic_lipsync.tscn"))
 	bar.add_child(mic_btn)
 
+	_rec_btn = Button.new()
+	_rec_btn.text = "Record 3s"
+	_rec_btn.tooltip_text = "Record mic → rebuild graph + drive 3D face"
+	_rec_btn.pressed.connect(_on_record_pressed)
+	bar.add_child(_rec_btn)
+
 	_ui_top = 44.0
-	_help = "stem+Load  wheel=zoom  mid=pan  left=select  Space=play  A/B=models  D=disagree  H=hard  Esc=clear"
+	_help = "stem+Load  Record  wheel=zoom  mid=pan  left=select  Space=play  A/B  D  H  Esc"
 
 
 func _on_stem_load() -> void:
@@ -185,9 +226,85 @@ func _refresh_plot_rect() -> void:
 	var r := _canvas_size()
 	var left := 72.0
 	var top := _ui_top + 8.0
-	var right := 160.0
+	var right := 24.0
 	var bottom := 56.0
 	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
+
+
+func _on_record_pressed() -> void:
+	if _recording:
+		return
+	if not ProjectSettings.get_setting("audio/driver/enable_input", false):
+		ProjectSettings.set_setting("audio/driver/enable_input", true)
+	var err := AudioServer.set_input_device_active(true)
+	if err != OK:
+		_status = "mic failed: %s" % error_string(err)
+		queue_redraw()
+		return
+	_stop_playback()
+	_recording = true
+	_rec_pcm = PackedFloat32Array()
+	_rec_frames_left = int(_rec_seconds * maxf(1.0, AudioServer.get_input_mix_rate()))
+	_rec_btn.disabled = true
+	_rec_btn.text = "Recording…"
+	_status = "recording %.1fs…" % _rec_seconds
+	queue_redraw()
+
+
+func _finish_recording() -> void:
+	_recording = false
+	AudioServer.set_input_device_active(false)
+	_rec_btn.disabled = false
+	_rec_btn.text = "Record 3s"
+	var in_rate := int(round(AudioServer.get_input_mix_rate()))
+	var mono := VisemeUtils.resample_pcm(_rec_pcm, in_rate, SAMPLE_RATE)
+	if mono.size() < SAMPLE_RATE / 2:
+		_status = "recording too short"
+		queue_redraw()
+		return
+	_pcm = mono
+	_status = "inferring from recording…"
+	queue_redraw()
+	var code := _infer_from_pcm()
+	if code != 0:
+		_status = "record infer failed"
+	else:
+		_view_t0 = 0.0
+		_view_t1 = _duration_s
+		_status = "recorded %.2fs — Space to play" % _duration_s
+	queue_redraw()
+	grab_focus()
+
+
+func _infer_from_pcm() -> int:
+	## Rebuild _series / hard bytes from current _pcm (stem load or mic record).
+	if not ClassDB.class_exists("MelFrontend") or not ClassDB.class_exists("OnnxLoader"):
+		push_error("need MelFrontend + OnnxLoader")
+		return 1
+	var root := _repo_root()
+	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
+	var json_path := root.path_join("export/ci-smoke/model.json")
+	if not FileAccess.file_exists(onnx_path):
+		return 1
+	_names = VisemeUtils.load_id_to_name(json_path)
+	var mel = ClassDB.instantiate("MelFrontend")
+	var loader = ClassDB.instantiate("OnnxLoader")
+	if mel == null or loader == null or not loader.load_model(onnx_path):
+		return 1
+	var contexts: Array = mel.build_utterance_contexts(_pcm)
+	if contexts.is_empty():
+		return 1
+	_series = _predict_series(loader, contexts)
+	if _series.is_empty():
+		return 1
+	_series_b.clear()
+	_boxes.clear()
+	_context_frames = 20
+	_hop_s = 0.01
+	_rebuild_hard_bytes()
+	var t0 := float(_context_frames - 1) * _hop_s
+	_duration_s = t0 + float(maxi(0, _series.size() - 1)) * _hop_s
+	return 0
 
 
 func _setup_audio() -> void:
@@ -497,8 +614,21 @@ func _stop_playback() -> void:
 
 
 func _process(_delta: float) -> void:
+	if _recording:
+		var avail := AudioServer.get_input_frames_available()
+		if avail > 0:
+			var n := mini(avail, _rec_frames_left)
+			var buf: PackedVector2Array = AudioServer.get_input_frames(n)
+			var mono := VisemeUtils.stereo_to_mono(buf)
+			for s in mono:
+				_rec_pcm.append(s)
+			_rec_frames_left -= mono.size()
+		if _rec_frames_left <= 0:
+			_finish_recording()
+		return
 	if not _playing or _playback == null:
 		return
+	_feed_face_at_playhead()
 	var frames := _playback.get_frames_available()
 	if frames <= 0:
 		return
