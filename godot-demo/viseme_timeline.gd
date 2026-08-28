@@ -190,7 +190,7 @@ func _build_stem_bar() -> void:
 
 	_rec_btn = Button.new()
 	_rec_btn.text = "Record 3s"
-	_rec_btn.tooltip_text = "Mic preview only: ONNX soft/hard curves + face (no MFA / no train-set align)"
+	_rec_btn.tooltip_text = "Capture mic → replace graph PCM/curves with this clip (no MFA). Load restores the stem sample."
 	_rec_btn.pressed.connect(_on_record_pressed)
 	bar.add_child(_rec_btn)
 
@@ -271,16 +271,24 @@ func _finish_recording() -> void:
 		_status = "recording too short"
 		queue_redraw()
 		return
+	_stop_playback()
 	_pcm = mono
-	_status = "inferring from recording…"
+	_status = "inferring recording into graph…"
 	queue_redraw()
 	var code := _infer_from_pcm()
 	if code != 0:
-		_status = "record infer failed"
+		_status = "record infer failed (graph unchanged) — check MelFrontend/OnnxLoader + model.onnx"
 	else:
 		_view_t0 = 0.0
 		_view_t1 = _duration_s
-		_status = "recorded %.2fs preview (no MFA) — Space to play" % _duration_s
+		_sel_t0 = -1.0
+		_sel_t1 = -1.0
+		_sel_px0 = -1.0
+		_sel_px1 = -1.0
+		_play_i = 0
+		_play_end = 0
+		_feed_face_at_time(0.0)
+		_status = "graph = your %.2fs recording (no MFA) — Space plays it; Load restores stem" % _duration_s
 	queue_redraw()
 	grab_focus()
 
