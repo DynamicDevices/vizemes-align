@@ -210,8 +210,14 @@ func _build_stem_bar() -> void:
 	_rec_btn.pressed.connect(_on_record_pressed)
 	bar.add_child(_rec_btn)
 
+	var play_btn := Button.new()
+	play_btn.text = "Play"
+	play_btn.tooltip_text = "Play caret ±150ms, or selection range, or visible window"
+	play_btn.pressed.connect(_play_selection)
+	bar.add_child(play_btn)
+
 	_ui_top = 44.0
-	_help = "wheel=zoom  mid=pan  left=caret/sel  Space=±150ms@caret  A/B  D  H  Esc"
+	_help = "Play/Space  wheel=zoom  mid=pan  left=caret/sel  Esc  Record replaces graph"
 
 
 func _on_stem_load() -> void:
@@ -497,11 +503,21 @@ func _clamp_view() -> void:
 
 
 func _gui_input(event: InputEvent) -> void:
-	## Mouse pan/zoom/select is on SelectOverlay; this node only handles keys.
+	## Prefer unhandled path so Space works even when overlay/LineEdit had focus.
 	if _quit_on_done:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		_handle_key(event as InputEventKey)
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _quit_on_done:
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k := event as InputEventKey
+		if k.keycode in [KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_A, KEY_B, KEY_D, KEY_H]:
+			_handle_key(k)
+			get_viewport().set_input_as_handled()
 
 
 func _handle_key(key: InputEventKey) -> void:
@@ -556,15 +572,21 @@ func _zoom_at(x: float, factor: float) -> void:
 
 func _play_selection() -> void:
 	if _pcm.is_empty():
+		_status = "nothing to play (empty PCM)"
+		queue_redraw()
+		return
+	if _player == null:
+		_setup_audio()
+	if _player == null:
+		_status = "audio player missing"
+		queue_redraw()
 		return
 	var a := _sel_t0
 	var b := _sel_t1
 	if a < 0.0 or b < 0.0:
-		# No caret/range: play the visible window.
 		a = _view_t0
 		b = _view_t1
 	elif absf(b - a) < 0.02:
-		# Single caret → ±150 ms (not the whole clip / view).
 		var t := a
 		a = t - CARET_PLAY_PAD_S
 		b = t + CARET_PLAY_PAD_S
@@ -574,16 +596,21 @@ func _play_selection() -> void:
 		b = tmp
 	a = clampf(a, 0.0, _duration_s)
 	b = clampf(b, 0.0, _duration_s)
-	_play_i = clampi(int(a * float(SAMPLE_RATE)), 0, _pcm.size())
-	_play_end = clampi(int(b * float(SAMPLE_RATE)), 0, _pcm.size())
+	_play_i = clampi(int(floor(a * float(SAMPLE_RATE))), 0, maxi(0, _pcm.size() - 1))
+	_play_end = clampi(int(ceil(b * float(SAMPLE_RATE))), 0, _pcm.size())
 	if _play_end <= _play_i:
+		_status = "play range empty"
+		queue_redraw()
 		return
 	_stop_playback()
 	_player.play()
 	_playback = _player.get_stream_playback() as AudioStreamGeneratorPlayback
 	_playing = _playback != null
 	if _playing:
-		_status = "playing %.3f–%.3fs" % [a, b]
+		_status = "playing %.3f–%.3fs (%d samples)" % [a, b, _play_end - _play_i]
+		queue_redraw()
+	else:
+		_status = "play failed (no AudioStreamGeneratorPlayback)"
 		queue_redraw()
 
 
@@ -784,20 +811,20 @@ func _draw_time_axis(curve_top: float, curve_h: float) -> void:
 	)
 	var ty := _plot.position.y + _plot.size.y + 22.0
 	draw_string(
-		ThemeDB.fallback_font, Vector2(_plot.position.x, ty), "%.3fs" % _view_t0,
+		ThemeDB.fallback_font, Vector2(_plot.position.x, ty), "view %.3fs" % _view_t0,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	draw_string(
-		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 56.0, ty), "%.3fs" % _view_t1,
+		ThemeDB.fallback_font, Vector2(_plot.position.x + _plot.size.x - 72.0, ty), "%.3fs" % _view_t1,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.75, 0.75, 0.8)
 	)
 	if _sel_t0 >= 0.0 and _sel_t1 >= 0.0:
-		var sel_label := "caret %.3fs (±150ms play)" % _sel_t0
+		var sel_label := "caret %.3fs (Space/Play = ±150ms)" % _sel_t0
 		if absf(_sel_t1 - _sel_t0) >= 0.02:
 			sel_label = "sel %.3f–%.3fs" % [mini(_sel_t0, _sel_t1), maxf(_sel_t0, _sel_t1)]
 		draw_string(
 			ThemeDB.fallback_font,
-			Vector2(_plot.position.x + _plot.size.x * 0.28, ty),
+			Vector2(_plot.position.x + _plot.size.x * 0.22, ty),
 			sel_label,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.95, 0.85, 0.35)
 		)
