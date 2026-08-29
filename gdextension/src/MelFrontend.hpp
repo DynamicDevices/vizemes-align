@@ -1,6 +1,7 @@
 #pragma once
 
 #include "feature_frontend.h"
+#include "MelSpeexPreprocess.hpp"
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -38,6 +39,9 @@ class MelFrontend : public RefCounted {
 	SpeexResamplerState *resampler = nullptr;
 	int resampler_in_rate = 0;
 
+	/** SpeexDSP preprocess (AGC/VAD/denoise) on model-rate mono before mel. */
+	MelSpeexPreprocess preprocess;
+
 	void clear_stream();
 	void destroy_resampler();
 	bool ensure_resampler(int from_rate);
@@ -45,6 +49,7 @@ class MelFrontend : public RefCounted {
 	Array contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const;
 	void enqueue_new_contexts(const Array &fresh);
 	PackedFloat32Array resample_mono(const float *mono, size_t n, int from_rate);
+	void append_stream_pcm(const float *pcm, size_t n);
 
 protected:
 	static void _bind_methods();
@@ -61,13 +66,23 @@ public:
 			int p_window_length_samples, int p_n_fft, float p_fmin, float p_fmax,
 			int p_n_visemes = 15, int p_input_features = 0);
 
+	/**
+	 * SpeexDSP preprocess on mic/model-rate mono (after resample).
+	 * gate_on_vad: drop non-speech frames from the stream (silence → no mel contexts).
+	 */
+	bool configure_preprocess(bool agc = true, bool vad = true, bool denoise = true,
+			float agc_level = 8000.f, bool gate_on_vad = false, int frame_size_ms = 10);
+	void disable_preprocess();
+	bool get_last_vad() const;
+	bool is_preprocess_enabled() const;
+
 	void reset();
 	/** Clear streaming PCM + context queue (keep configure). */
 	void begin_stream();
 
 	/** Append mono PCM already at configured sample_rate; produce contexts into the queue. */
 	void push_pcm(const PackedFloat32Array &pcm);
-	/** Mic path: stereo frames at mix_rate → mono + resample → push_pcm. */
+	/** Mic path: stereo frames at mix_rate → mono + resample (+ preprocess) → push_pcm. */
 	void push_pcm_stereo(const PackedVector2Array &frames, int mix_rate);
 
 	int count_available_contexts() const;

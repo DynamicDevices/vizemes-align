@@ -29,6 +29,8 @@ func _ready() -> void:
 	if not VisemeUtils.configure_mel_from_json(_mel, json_path):
 		push_error("configure failed: %s" % json_path)
 		return
+	if _mel.has_method("configure_preprocess"):
+		_mel.configure_preprocess(true, true, true, 8000.0, false, 10)
 	_mel.begin_stream()
 	print("mic_context_print ready — shout; contexts print as produced (%s)" % json_path)
 

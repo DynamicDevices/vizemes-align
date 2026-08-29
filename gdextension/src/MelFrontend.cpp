@@ -73,6 +73,13 @@ void MelFrontend::_bind_methods()
 						   "hop_length_samples", "window_length_samples", "n_fft", "fmin", "fmax",
 						   "n_visemes", "input_features"),
 			&MelFrontend::configure, DEFVAL(15), DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("configure_preprocess", "agc", "vad", "denoise", "agc_level",
+						   "gate_on_vad", "frame_size_ms"),
+			&MelFrontend::configure_preprocess, DEFVAL(true), DEFVAL(true), DEFVAL(true),
+			DEFVAL(8000.f), DEFVAL(false), DEFVAL(10));
+	ClassDB::bind_method(D_METHOD("disable_preprocess"), &MelFrontend::disable_preprocess);
+	ClassDB::bind_method(D_METHOD("get_last_vad"), &MelFrontend::get_last_vad);
+	ClassDB::bind_method(D_METHOD("is_preprocess_enabled"), &MelFrontend::is_preprocess_enabled);
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
 	ClassDB::bind_method(D_METHOD("begin_stream"), &MelFrontend::begin_stream);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
@@ -133,12 +140,42 @@ void MelFrontend::reset()
 	}
 	clear_stream();
 	destroy_resampler();
+	preprocess.destroy();
 	cfg = {};
 	context_frames = 0;
 	n_mels = 0;
 	input_features = 0;
 	n_visemes = 0;
 	configured = false;
+}
+
+bool MelFrontend::configure_preprocess(bool agc, bool vad, bool denoise, float agc_level,
+		bool gate_on_vad, int frame_size_ms)
+{
+	if (!configured || cfg.sample_rate <= 0) {
+		UtilityFunctions::push_error("MelFrontend.configure_preprocess: call configure() first");
+		return false;
+	}
+	if (!preprocess.setup(cfg.sample_rate, frame_size_ms, agc, vad, denoise, agc_level, gate_on_vad)) {
+		UtilityFunctions::push_error("MelFrontend: Speex preprocess init failed");
+		return false;
+	}
+	return true;
+}
+
+void MelFrontend::disable_preprocess()
+{
+	preprocess.destroy();
+}
+
+bool MelFrontend::get_last_vad() const
+{
+	return preprocess.get_last_vad();
+}
+
+bool MelFrontend::is_preprocess_enabled() const
+{
+	return preprocess.is_enabled();
 }
 
 void MelFrontend::begin_stream()
@@ -151,6 +188,7 @@ void MelFrontend::begin_stream()
 	if (resampler) {
 		speex_resampler_reset_mem(resampler);
 	}
+	preprocess.clear_pending();
 }
 
 void MelFrontend::enqueue_new_contexts(const Array &fresh)
@@ -232,6 +270,28 @@ Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t 
 	return out;
 }
 
+void MelFrontend::append_stream_pcm(const float *pcm, size_t n)
+{
+	if (!pcm || n == 0) {
+		return;
+	}
+	if (stream_pcm_n + n > stream_pcm_cap) {
+		size_t need = stream_pcm_n + n;
+		float *nb = (float *)realloc(stream_pcm, need * sizeof(float));
+		if (!nb) {
+			return;
+		}
+		stream_pcm = nb;
+		stream_pcm_cap = need;
+	}
+	memcpy(stream_pcm + stream_pcm_n, pcm, n * sizeof(float));
+	stream_pcm_n += n;
+
+	Array fresh = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
+	stream_contexts_emitted += (size_t)fresh.size();
+	enqueue_new_contexts(fresh);
+}
+
 void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 {
 	std::lock_guard<std::mutex> lock(stream_mu);
@@ -243,21 +303,16 @@ void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 		return;
 	}
 
-	if (stream_pcm_n + (size_t)n_in > stream_pcm_cap) {
-		size_t need = stream_pcm_n + (size_t)n_in;
-		float *nb = (float *)realloc(stream_pcm, need * sizeof(float));
-		if (!nb) {
-			return;
+	if (preprocess.is_enabled()) {
+		std::vector<float> processed;
+		processed.reserve((size_t)n_in);
+		preprocess.process_and_append(pcm.ptr(), (size_t)n_in, processed);
+		if (!processed.empty()) {
+			append_stream_pcm(processed.data(), processed.size());
 		}
-		stream_pcm = nb;
-		stream_pcm_cap = need;
+		return;
 	}
-	memcpy(stream_pcm + stream_pcm_n, pcm.ptr(), (size_t)n_in * sizeof(float));
-	stream_pcm_n += (size_t)n_in;
-
-	Array fresh = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
-	stream_contexts_emitted += (size_t)fresh.size();
-	enqueue_new_contexts(fresh);
+	append_stream_pcm(pcm.ptr(), (size_t)n_in);
 }
 
 PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int from_rate)
