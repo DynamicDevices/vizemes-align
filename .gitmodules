@@ -2,3 +2,6 @@
 	path = gdextension/godot-cpp
 	url = https://github.com/godotengine/godot-cpp.git
 	branch = 4.5
+[submodule "gdextension/thirdparty/speexdsp"]
+	path = gdextension/thirdparty/speexdsp
+	url = https://gitlab.xiph.org/xiph/speexdsp.git

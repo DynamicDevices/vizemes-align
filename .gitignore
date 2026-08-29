@@ -25,3 +25,4 @@ export/debug/
 !.cursor/rules/
 .cursor/rules/*
 !.cursor/rules/vizemes-telegram.mdc
+gdextension/thirdparty/speexdsp/include/speex/speexdsp_config_types.h

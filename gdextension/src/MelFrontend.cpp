@@ -1,15 +1,18 @@
 #include "MelFrontend.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/utility_functions.hpp>
 #include <godot_cpp/variant/vector2.hpp>
 
 #include "mel_spectrogram.h"
+#include "speex_resampler.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
 #include <mutex>
+#include <vector>
 
 MelFrontend::MelFrontend()
 {
@@ -29,6 +32,39 @@ void MelFrontend::clear_stream()
 	stream_pcm_cap = 0;
 	stream_contexts_emitted = 0;
 	context_queue.clear();
+}
+
+void MelFrontend::destroy_resampler()
+{
+	if (resampler) {
+		speex_resampler_destroy(resampler);
+		resampler = nullptr;
+	}
+	resampler_in_rate = 0;
+}
+
+bool MelFrontend::ensure_resampler(int from_rate)
+{
+	if (from_rate <= 0 || cfg.sample_rate <= 0) {
+		return false;
+	}
+	if (from_rate == cfg.sample_rate) {
+		destroy_resampler();
+		return true;
+	}
+	if (resampler && resampler_in_rate == from_rate) {
+		return true;
+	}
+	destroy_resampler();
+	int err = 0;
+	resampler = speex_resampler_init(1, (spx_uint32_t)from_rate, (spx_uint32_t)cfg.sample_rate, 5, &err);
+	if (!resampler || err != RESAMPLER_ERR_SUCCESS) {
+		resampler = nullptr;
+		UtilityFunctions::push_error("MelFrontend: Speex resampler init failed");
+		return false;
+	}
+	resampler_in_rate = from_rate;
+	return true;
 }
 
 void MelFrontend::_bind_methods()
@@ -96,6 +132,7 @@ void MelFrontend::reset()
 		ops->free();
 	}
 	clear_stream();
+	destroy_resampler();
 	cfg = {};
 	context_frames = 0;
 	n_mels = 0;
@@ -111,6 +148,9 @@ void MelFrontend::begin_stream()
 		return;
 	}
 	clear_stream();
+	if (resampler) {
+		speex_resampler_reset_mem(resampler);
+	}
 }
 
 void MelFrontend::enqueue_new_contexts(const Array &fresh)
@@ -220,7 +260,7 @@ void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 	enqueue_new_contexts(fresh);
 }
 
-PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int from_rate) const
+PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int from_rate)
 {
 	PackedFloat32Array out;
 	if (!mono || n == 0 || from_rate <= 0 || cfg.sample_rate <= 0) {
@@ -231,15 +271,28 @@ PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int f
 		memcpy(out.ptrw(), mono, n * sizeof(float));
 		return out;
 	}
+	if (!ensure_resampler(from_rate) || !resampler) {
+		return out;
+	}
+	spx_uint32_t in_len = (spx_uint32_t)n;
 	const double ratio = (double)cfg.sample_rate / (double)from_rate;
-	const int out_n = std::max(1, (int)floor((double)n * ratio + 0.5));
-	out.resize(out_n);
-	for (int i = 0; i < out_n; i++) {
-		double src = (double)i / ratio;
-		size_t i0 = (size_t)src;
-		size_t i1 = i0 + 1 < n ? i0 + 1 : n - 1;
-		float frac = (float)(src - (double)i0);
-		out[i] = mono[i0] * (1.f - frac) + mono[i1] * frac;
+	spx_uint32_t out_cap = (spx_uint32_t)std::ceil(n * ratio) + 16u +
+			(spx_uint32_t)speex_resampler_get_output_latency(resampler);
+	if (out_cap < 1) {
+		out_cap = 1;
+	}
+	std::vector<float> in_buf(mono, mono + n);
+	std::vector<float> out_buf(out_cap);
+	spx_uint32_t out_len = out_cap;
+	int err = speex_resampler_process_float(resampler, 0, in_buf.data(), &in_len, out_buf.data(),
+			&out_len);
+	if (err != RESAMPLER_ERR_SUCCESS) {
+		UtilityFunctions::push_error("MelFrontend: Speex resample failed");
+		return out;
+	}
+	out.resize((int)out_len);
+	if (out_len > 0) {
+		memcpy(out.ptrw(), out_buf.data(), (size_t)out_len * sizeof(float));
 	}
 	return out;
 }

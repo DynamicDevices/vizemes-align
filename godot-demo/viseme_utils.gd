@@ -47,6 +47,11 @@ static func resample_pcm(pcm: PackedFloat32Array, from_rate: int, to_rate: int) 
 		return PackedFloat32Array()
 	if from_rate == to_rate:
 		return pcm
+	# Prefer SpeexDSP GDExtension when present (DynamicDevices/godot-speexdsp).
+	if ClassDB.class_exists("SpeexResampler"):
+		var rs = ClassDB.instantiate("SpeexResampler")
+		if rs.setup(1, from_rate, to_rate, 5) == OK:
+			return rs.process(pcm)
 	var out_len := maxi(1, int(round(float(pcm.size()) * float(to_rate) / float(from_rate))))
 	var out := PackedFloat32Array()
 	out.resize(out_len)

@@ -73,7 +73,7 @@ Move today’s `gdextension/godot/` → `addons/vizemes_mel/`. SConstruct writes
 
 ### 3b mic ingest (msg 827)
 
-- Native **resampler** inside MelFrontend (or shared C) to 16 kHz.
+- Native **resampler** — SpeexDSP (`godot-speexdsp` + MelFrontend mic path); ear-validated, not linear interp.
 - `push_pcm_stereo(PackedVector2Array frames, int mix_rate)` → mono + resample + queue.
 
 ### 3c stream queue (msg 828)

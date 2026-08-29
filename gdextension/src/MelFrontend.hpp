@@ -10,6 +10,9 @@
 #include <mutex>
 #include <vector>
 
+struct SpeexResamplerState_;
+typedef struct SpeexResamplerState_ SpeexResamplerState;
+
 using namespace godot;
 
 /** PCM → flattened mel context tensor (for OnnxLoader.predict). No ONNX here. */
@@ -31,11 +34,17 @@ class MelFrontend : public RefCounted {
 	std::vector<PackedFloat32Array> context_queue;
 	mutable std::mutex stream_mu;
 
+	/** SpeexDSP resampler for mic mix_rate → model sample_rate (stateful). */
+	SpeexResamplerState *resampler = nullptr;
+	int resampler_in_rate = 0;
+
 	void clear_stream();
+	void destroy_resampler();
+	bool ensure_resampler(int from_rate);
 	bool apply_config();
 	Array contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const;
 	void enqueue_new_contexts(const Array &fresh);
-	PackedFloat32Array resample_mono(const float *mono, size_t n, int from_rate) const;
+	PackedFloat32Array resample_mono(const float *mono, size_t n, int from_rate);
 
 protected:
 	static void _bind_methods();
