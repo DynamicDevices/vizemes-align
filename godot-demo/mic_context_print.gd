@@ -57,10 +57,13 @@ func _process(_dt: float) -> void:
 			if a > peak:
 				peak = a
 		var mean := sum / float(maxi(1, ctx.size()))
+		var vad_s := "?"
+		if _mel.has_method("get_last_vad"):
+			vad_s = str(_mel.get_last_vad())
 		print(
-			"ctx=%d frames=%d peak=%.3f mean=%.3f lag=%.3fs queued=%d" % [
+			"ctx=%d frames=%d peak=%.3f mean=%.3f lag=%.3fs queued=%d vad=%s" % [
 				_ctx_n, _frames, peak, mean, _mel.last_context_time_offset(),
-				_mel.count_available_contexts()
+				_mel.count_available_contexts(), vad_s
 			]
 		)
 
