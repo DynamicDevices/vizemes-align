@@ -2,6 +2,7 @@
 
 #include "feature_frontend.h"
 #include "MelSpeexPreprocess.hpp"
+#include "MelSpeexEcho.hpp"
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
@@ -41,6 +42,8 @@ class MelFrontend : public RefCounted {
 
 	/** SpeexDSP preprocess (AGC/VAD/denoise) on model-rate mono before mel. */
 	MelSpeexPreprocess preprocess;
+	/** SpeexDSP AEC before preprocess; far-end via push_far_end_*. */
+	MelSpeexEcho aec;
 
 	void clear_stream();
 	void destroy_resampler();
@@ -75,6 +78,16 @@ public:
 	void disable_preprocess();
 	bool get_last_vad() const;
 	bool is_preprocess_enabled() const;
+
+	/**
+	 * SpeexDSP AEC on model-rate mono (before preprocess).
+	 * Push far-end (speaker) with push_far_end_pcm / push_far_end_stereo.
+	 */
+	bool configure_aec(int filter_ms = 100, int frame_size_ms = 10);
+	void disable_aec();
+	bool is_aec_enabled() const;
+	void push_far_end_pcm(const PackedFloat32Array &pcm);
+	void push_far_end_stereo(const PackedVector2Array &frames, int mix_rate);
 
 	void reset();
 	/** Clear streaming PCM + context queue (keep configure). */

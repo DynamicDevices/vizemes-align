@@ -72,6 +72,22 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
+	# AEC: far-end tone + delayed echo in near; should not crash / should emit
+	assert(mel.configure_aec(100, 10))
+	mel.begin_stream()
+	var far := PackedFloat32Array()
+	far.resize(160)
+	var near := PackedFloat32Array()
+	near.resize(160)
+	for n in 20:
+		for i in 160:
+			var t: float = 0.2 * sin(TAU * 440.0 * float(n * 160 + i) / 16000.0)
+			far[i] = t
+			near[i] = 0.4 * t
+		mel.push_far_end_pcm(far)
+		mel.push_pcm(near)
+	mel.disable_aec()
+
 	print(
 		"streaming_contexts=%d batch_contexts=%d logits=%d rate_change_ctx=%d" % [
 			stream_ctx.size(), batch_ctx.size(), logits.size(), after_rate

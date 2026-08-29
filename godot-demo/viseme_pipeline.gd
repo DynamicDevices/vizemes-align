@@ -41,6 +41,25 @@ func set_vad_gate(enabled: bool) -> void:
 	mel.begin_stream()
 
 
+func set_aec(enabled: bool, filter_ms: int = 100) -> void:
+	## Acoustic echo canceller; feed speaker audio via feed_far_end_stereo.
+	if mel == null or not mel.has_method("configure_aec"):
+		return
+	if enabled:
+		mel.configure_aec(filter_ms, 10)
+	elif mel.has_method("disable_aec"):
+		mel.disable_aec()
+	mel.begin_stream()
+
+
+func feed_far_end_stereo(frames: PackedVector2Array, mix_rate: int) -> void:
+	if mel == null or frames.is_empty() or not mel.has_method("push_far_end_stereo"):
+		return
+	if mel.has_method("is_aec_enabled") and not mel.is_aec_enabled():
+		return
+	mel.push_far_end_stereo(frames, mix_rate)
+
+
 func last_vad() -> bool:
 	if mel != null and mel.has_method("get_last_vad"):
 		return mel.get_last_vad()
