@@ -5,6 +5,7 @@
   cd gdextension && scons platform=linux target=template_debug
 """
 import os
+import shutil
 import sys
 
 from SCons.Script import Default, Dir, SConscript
@@ -12,6 +13,11 @@ from SCons.Script import Default, Dir, SConscript
 godot_cpp = Dir("godot-cpp")
 if not godot_cpp.exists() or not os.listdir(str(godot_cpp.srcnode())):
     print("godot-cpp missing. Run: git submodule update --init --recursive", file=sys.stderr)
+    sys.exit(1)
+
+speex = Dir("thirdparty/speexdsp")
+if not speex.exists() or not os.listdir(str(speex.srcnode())):
+    print("speexdsp missing. Run: git submodule update --init --recursive", file=sys.stderr)
     sys.exit(1)
 
 env = SConscript("godot-cpp/SConstruct")
@@ -29,6 +35,31 @@ env_c.Append(
 )
 mel_lib = env_c.StaticLibrary("build/libvizemes_mel_c", mel_c)
 
+# SpeexDSP resampler (unmodified sources) for MelFrontend mic path.
+_config_types_dst = "thirdparty/speexdsp/include/speex/speexdsp_config_types.h"
+if not os.path.isfile(_config_types_dst):
+    shutil.copyfile("thirdparty/speexdsp_glue/speexdsp_config_types.h", _config_types_dst)
+speex_inc = [
+    "thirdparty/speexdsp/include/speex",
+    "thirdparty/speexdsp/libspeexdsp",
+    "thirdparty/speexdsp_glue",
+]
+speex_defs = [
+    "OUTSIDE_SPEEX",
+    "RANDOM_PREFIX=vizemes_mel",
+    "FLOATING_POINT",
+    "EXPORT=",
+]
+env_speex = env.Clone()
+env_speex.Append(
+    CCFLAGS=["-std=c99", "-Wall", "-Wextra", "-fPIC", "-O2", "-Wno-sign-compare"],
+    CPPPATH=speex_inc,
+    CPPDEFINES=speex_defs,
+)
+speex_lib = env_speex.StaticLibrary(
+    "build/libspeex_resample", ["thirdparty/speexdsp/libspeexdsp/resample.c"]
+)
+
 godot_sources = [
     "src/MelFrontend.cpp",
     "src/MelAudioEffect.cpp",
@@ -38,13 +69,14 @@ godot_sources = [
 env_cpp = env.Clone()
 env_cpp.Append(
     CXXFLAGS=["-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-unused-variable", "-fno-gnu-unique"],
-    CPPPATH=inc,
+    CPPPATH=inc + speex_inc,
+    CPPDEFINES=speex_defs,
     LINKFLAGS=["-Wl,-z,noexecstack"],
 )
 if env_cpp["platform"] == "linux":
     env_cpp.Append(LINKFLAGS=["-static-libgcc", "-static-libstdc++"])
 
-env_cpp.Append(LIBS=[mel_lib, "m"])
+env_cpp.Append(LIBS=[mel_lib, speex_lib, "m"])
 
 libname = "vizemes_mel"
 if env_cpp["platform"] == "macos":
