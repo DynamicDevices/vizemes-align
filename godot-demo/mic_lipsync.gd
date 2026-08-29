@@ -31,10 +31,17 @@ func _ready() -> void:
 
 	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
 	_pipe = VisemePipelineScript.new()
-	if not _pipe.setup(
-		root.path_join("export/ci-smoke/model.json"),
-		root.path_join("export/ci-smoke/model.onnx")
-	):
+	var model_dir: String = ClipProbeIo.resolve_model_dir()
+	var onnx_path := model_dir.path_join("model.onnx")
+	if not FileAccess.file_exists(onnx_path):
+		onnx_path = model_dir.path_join("model_final.onnx")
+	var json_path := model_dir.path_join("model.json")
+	if not FileAccess.file_exists(json_path):
+		json_path = model_dir.path_join("model_final.json")
+	if not FileAccess.file_exists(json_path):
+		json_path = root.path_join("export/ci-smoke/model.json")
+	if not _pipe.setup(json_path, onnx_path):
+		push_error("mic_lipsync: setup failed for %s + %s" % [json_path, onnx_path])
 		get_tree().quit(1)
 		return
 	_target = VisemeTarget.resolve(self)
@@ -120,7 +127,8 @@ func _process(_delta: float) -> void:
 	if buffer.is_empty():
 		return
 	var in_rate := int(round(AudioServer.get_input_mix_rate()))
-	var produced := _pipe.feed_pcm_stereo(buffer, in_rate, _target)
+	# Explicit type: _pipe is untyped, so := cannot infer feed_pcm_stereo's int.
+	var produced: int = _pipe.feed_pcm_stereo(buffer, in_rate, _target)
 	_frames += produced
 	for _i in produced:
 		if _pipe.last_ovr.size() > 0:
