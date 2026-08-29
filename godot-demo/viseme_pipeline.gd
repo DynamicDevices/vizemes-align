@@ -38,6 +38,7 @@ func set_vad_gate(enabled: bool) -> void:
 	if mel == null or not mel.has_method("configure_preprocess"):
 		return
 	mel.configure_preprocess(true, true, true, 8000.0, enabled, 10)
+	mel.begin_stream()
 
 
 func last_vad() -> bool:
