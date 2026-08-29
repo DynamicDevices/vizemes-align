@@ -60,6 +60,13 @@ func feed_far_end_stereo(frames: PackedVector2Array, mix_rate: int) -> void:
 	mel.push_far_end_stereo(frames, mix_rate)
 
 
+func dsp_latency_seconds() -> float:
+	## Fixed Speex stack delay (resample + AEC + preprocess frames) for realign.
+	if mel != null and mel.has_method("get_dsp_latency_seconds"):
+		return float(mel.get_dsp_latency_seconds())
+	return 0.0
+
+
 func last_vad() -> bool:
 	if mel != null and mel.has_method("get_last_vad"):
 		return mel.get_last_vad()

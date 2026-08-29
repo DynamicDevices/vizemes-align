@@ -113,6 +113,14 @@ void MelFrontend::_bind_methods()
 	ClassDB::bind_method(D_METHOD("get_n_mels"), &MelFrontend::get_n_mels);
 	ClassDB::bind_method(D_METHOD("get_sample_rate"), &MelFrontend::get_sample_rate);
 	ClassDB::bind_method(D_METHOD("get_hop_length_samples"), &MelFrontend::get_hop_length_samples);
+	ClassDB::bind_method(D_METHOD("get_resampler_input_latency"),
+			&MelFrontend::get_resampler_input_latency);
+	ClassDB::bind_method(D_METHOD("get_resampler_output_latency"),
+			&MelFrontend::get_resampler_output_latency);
+	ClassDB::bind_method(D_METHOD("get_preprocess_frame_size"), &MelFrontend::get_preprocess_frame_size);
+	ClassDB::bind_method(D_METHOD("get_aec_frame_size"), &MelFrontend::get_aec_frame_size);
+	ClassDB::bind_method(D_METHOD("get_dsp_latency_samples"), &MelFrontend::get_dsp_latency_samples);
+	ClassDB::bind_method(D_METHOD("get_dsp_latency_seconds"), &MelFrontend::get_dsp_latency_seconds);
 }
 
 bool MelFrontend::apply_config()
@@ -523,4 +531,44 @@ int MelFrontend::get_sample_rate() const
 int MelFrontend::get_hop_length_samples() const
 {
 	return configured ? cfg.hop_length_samples : 0;
+}
+
+int MelFrontend::get_resampler_input_latency() const
+{
+	return resampler ? (int)speex_resampler_get_input_latency(resampler) : 0;
+}
+
+int MelFrontend::get_resampler_output_latency() const
+{
+	return resampler ? (int)speex_resampler_get_output_latency(resampler) : 0;
+}
+
+int MelFrontend::get_preprocess_frame_size() const
+{
+	return preprocess.is_enabled() ? preprocess.get_frame_size() : 0;
+}
+
+int MelFrontend::get_aec_frame_size() const
+{
+	return aec.is_enabled() ? aec.get_frame_size() : 0;
+}
+
+int MelFrontend::get_dsp_latency_samples() const
+{
+	if (!configured) {
+		return 0;
+	}
+	/* Model-rate samples of fixed Speex delay before mel sees audio. */
+	int n = get_resampler_output_latency();
+	n += get_aec_frame_size();
+	n += get_preprocess_frame_size();
+	return n;
+}
+
+float MelFrontend::get_dsp_latency_seconds() const
+{
+	if (!configured || cfg.sample_rate <= 0) {
+		return 0.f;
+	}
+	return (float)get_dsp_latency_samples() / (float)cfg.sample_rate;
 }
