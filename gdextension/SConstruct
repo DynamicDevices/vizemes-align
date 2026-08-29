@@ -35,66 +35,109 @@ env_c.Append(
 )
 mel_lib = env_c.StaticLibrary("build/libvizemes_mel_c", mel_c)
 
-# SpeexDSP resampler (unmodified sources) for MelFrontend mic path.
 _config_types_dst = "thirdparty/speexdsp/include/speex/speexdsp_config_types.h"
 if not os.path.isfile(_config_types_dst):
     shutil.copyfile("thirdparty/speexdsp_glue/speexdsp_config_types.h", _config_types_dst)
+
+speex_root = "thirdparty/speexdsp"
 speex_inc = [
-    "thirdparty/speexdsp/include/speex",
-    "thirdparty/speexdsp/libspeexdsp",
+    f"{speex_root}/include",
+    f"{speex_root}/include/speex",
+    f"{speex_root}/libspeexdsp",
     "thirdparty/speexdsp_glue",
 ]
-speex_defs = [
+
+# Resampler — OUTSIDE_SPEEX renames symbols.
+resample_defs = [
     "OUTSIDE_SPEEX",
     "RANDOM_PREFIX=vizemes_mel",
     "FLOATING_POINT",
     "EXPORT=",
 ]
-env_speex = env.Clone()
-env_speex.Append(
+env_rs = env.Clone()
+env_rs.Append(
     CCFLAGS=["-std=c99", "-Wall", "-Wextra", "-fPIC", "-O2", "-Wno-sign-compare"],
     CPPPATH=speex_inc,
-    CPPDEFINES=speex_defs,
+    CPPDEFINES=resample_defs,
 )
-speex_lib = env_speex.StaticLibrary(
-    "build/libspeex_resample", ["thirdparty/speexdsp/libspeexdsp/resample.c"]
+speex_rs = env_rs.StaticLibrary(
+    "build/libspeex_resample", [f"{speex_root}/libspeexdsp/resample.c"]
 )
 
-godot_sources = [
-    "src/MelFrontend.cpp",
-    "src/MelAudioEffect.cpp",
-    "src/register_types.cpp",
+# Preprocess / AGC / VAD — normal Speex symbols (no OUTSIDE_SPEEX).
+preprocess_defs = [
+    "HAVE_CONFIG_H",
+    "FLOATING_POINT",
+    "USE_KISS_FFT",
+    "EXPORT=",
+]
+preprocess_c = [
+    f"{speex_root}/libspeexdsp/preprocess.c",
+    f"{speex_root}/libspeexdsp/mdf.c",
+    f"{speex_root}/libspeexdsp/fftwrap.c",
+    f"{speex_root}/libspeexdsp/filterbank.c",
+    f"{speex_root}/libspeexdsp/kiss_fft.c",
+    f"{speex_root}/libspeexdsp/kiss_fftr.c",
+]
+env_pp = env.Clone()
+env_pp.Append(
+    CCFLAGS=["-std=c99", "-Wall", "-Wextra", "-fPIC", "-O2", "-Wno-sign-compare", "-Wno-unused-parameter"],
+    CPPPATH=speex_inc,
+    CPPDEFINES=preprocess_defs,
+)
+speex_pp = env_pp.StaticLibrary("build/libspeex_preprocess", preprocess_c)
+
+cxx_common = [
+    "-Wall",
+    "-Wextra",
+    "-Werror",
+    "-Wno-unused-parameter",
+    "-Wno-unused-variable",
+    "-fno-gnu-unique",
 ]
 
-env_cpp = env.Clone()
-env_cpp.Append(
-    CXXFLAGS=["-Wall", "-Wextra", "-Werror", "-Wno-unused-parameter", "-Wno-unused-variable", "-fno-gnu-unique"],
+# MelFrontend.cpp needs resample macros; MelSpeexPreprocess.cpp needs preprocess macros.
+env_mel_cpp = env.Clone()
+env_mel_cpp.Append(
+    CXXFLAGS=cxx_common,
     CPPPATH=inc + speex_inc,
-    CPPDEFINES=speex_defs,
+    CPPDEFINES=resample_defs,
     LINKFLAGS=["-Wl,-z,noexecstack"],
 )
-if env_cpp["platform"] == "linux":
-    env_cpp.Append(LINKFLAGS=["-static-libgcc", "-static-libstdc++"])
+env_pp_cpp = env.Clone()
+env_pp_cpp.Append(
+    CXXFLAGS=cxx_common,
+    CPPPATH=inc + speex_inc,
+    CPPDEFINES=preprocess_defs,
+)
 
-env_cpp.Append(LIBS=[mel_lib, speex_lib, "m"])
+obj_mel = env_mel_cpp.SharedObject("build/MelFrontend", "src/MelFrontend.cpp")
+obj_fx = env_mel_cpp.SharedObject("build/MelAudioEffect", "src/MelAudioEffect.cpp")
+obj_reg = env_mel_cpp.SharedObject("build/register_types", "src/register_types.cpp")
+obj_pp = env_pp_cpp.SharedObject("build/MelSpeexPreprocess", "src/MelSpeexPreprocess.cpp")
+
+env_link = env.Clone()
+if env_link["platform"] == "linux":
+    env_link.Append(LINKFLAGS=["-static-libgcc", "-static-libstdc++", "-Wl,-z,noexecstack"])
+env_link.Append(LIBS=[mel_lib, speex_rs, speex_pp, "m"])
 
 libname = "vizemes_mel"
-if env_cpp["platform"] == "macos":
-    library = env_cpp.SharedLibrary(
+if env_link["platform"] == "macos":
+    library = env_link.SharedLibrary(
         "../addons/vizemes_mel/bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
             libname,
-            env_cpp["platform"],
-            env_cpp["target"],
+            env_link["platform"],
+            env_link["target"],
             libname,
-            env_cpp["platform"],
-            env_cpp["target"],
+            env_link["platform"],
+            env_link["target"],
         ),
-        source=godot_sources,
+        source=[obj_mel, obj_fx, obj_reg, obj_pp],
     )
 else:
-    library = env_cpp.SharedLibrary(
-        "../addons/vizemes_mel/bin/lib{}{}{}".format(libname, env_cpp["suffix"], env_cpp["SHLIBSUFFIX"]),
-        source=godot_sources,
+    library = env_link.SharedLibrary(
+        "../addons/vizemes_mel/bin/lib{}{}{}".format(libname, env_link["suffix"], env_link["SHLIBSUFFIX"]),
+        source=[obj_mel, obj_fx, obj_reg, obj_pp],
     )
 
 Default(library)

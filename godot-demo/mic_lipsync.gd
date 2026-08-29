@@ -82,7 +82,8 @@ func _process(_delta: float) -> void:
 		var hb := 0
 		if not _hard_bytes.is_empty():
 			hb = _hard_bytes[_hard_bytes.size() - 1]
-		_label.text = "viseme=%s  frames=%d  hard=%dB last=0x%02X  via=%s  in=%.0fHz" % [
+	_label.text = "viseme=%s  frames=%d  hard=%dB last=0x%02X  via=%s  in=%.0fHz  vad=%s" % [
 			VisemeUtils.OVR_NAMES[top], _frames, _hard_bytes.size(), hb, _target.name,
-			AudioServer.get_input_mix_rate()
+			AudioServer.get_input_mix_rate(),
+			str(_pipe.last_vad()) if _pipe.has_method("last_vad") else "?"
 		]

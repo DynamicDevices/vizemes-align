@@ -27,7 +27,23 @@ func setup(json_path: String, onnx_path: String) -> bool:
 	if not loader.load_model(onnx_path):
 		return false
 	target_rate = int(mel.get_sample_rate()) if mel.get_sample_rate() > 0 else 16000
+	# SpeexDSP AGC + VAD + denoise on mic path (gate off by default — still emit silence contexts).
+	if mel.has_method("configure_preprocess"):
+		mel.configure_preprocess(true, true, true, 8000.0, false, 10)
 	return true
+
+
+func set_vad_gate(enabled: bool) -> void:
+	## When true, non-speech frames are dropped (no mel contexts / lipsync while quiet).
+	if mel == null or not mel.has_method("configure_preprocess"):
+		return
+	mel.configure_preprocess(true, true, true, 8000.0, enabled, 10)
+
+
+func last_vad() -> bool:
+	if mel != null and mel.has_method("get_last_vad"):
+		return mel.get_last_vad()
+	return false
 
 
 func begin_stream() -> void:
