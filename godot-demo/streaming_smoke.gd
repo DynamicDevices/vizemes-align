@@ -88,9 +88,21 @@ func _ready() -> void:
 		mel.push_pcm(near)
 	mel.disable_aec()
 
+	# Latency API (Julian realign): after stereo push, Speex resampler exists.
+	var dsp_n: int = mel.get_dsp_latency_samples()
+	var dsp_s: float = mel.get_dsp_latency_seconds()
+	if mel.is_preprocess_enabled() and mel.get_preprocess_frame_size() <= 0:
+		push_error("preprocess frame_size missing")
+		get_tree().quit(1)
+		return
+	if dsp_s < 0.0:
+		push_error("dsp latency negative")
+		get_tree().quit(1)
+		return
+
 	print(
-		"streaming_contexts=%d batch_contexts=%d logits=%d rate_change_ctx=%d" % [
-			stream_ctx.size(), batch_ctx.size(), logits.size(), after_rate
+		"streaming_contexts=%d batch_contexts=%d logits=%d rate_change_ctx=%d dsp_lat=%d (%.4fs)" % [
+			stream_ctx.size(), batch_ctx.size(), logits.size(), after_rate, dsp_n, dsp_s
 		]
 	)
 	print("GODOT_STREAMING_SMOKE_OK")

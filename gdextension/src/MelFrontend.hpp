@@ -114,4 +114,21 @@ public:
 	int get_n_mels() const;
 	int get_sample_rate() const;
 	int get_hop_length_samples() const;
+
+	/**
+	 * Speex resampler latencies (model-rate / mix-rate samples). 0 if no resampler.
+	 * Use with get_dsp_latency_samples() for viseme↔playback realignment.
+	 */
+	int get_resampler_input_latency() const;
+	int get_resampler_output_latency() const;
+	int get_preprocess_frame_size() const;
+	int get_aec_frame_size() const;
+	/**
+	 * Fixed DSP delay at model sample_rate before mel contexts: Speex resampler
+	 * output latency + one AEC frame (if on) + one preprocess frame (if on).
+	 * Does not include mel context_frames / hop (see last_context_time_offset).
+	 */
+	int get_dsp_latency_samples() const;
+	/** get_dsp_latency_samples() / sample_rate (0 if unconfigured). */
+	float get_dsp_latency_seconds() const;
 };
