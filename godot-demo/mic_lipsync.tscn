@@ -28,6 +28,11 @@ unique_name_in_owner = true
 layout_mode = 2
 text = "Gate on VAD (drop silence → no mel/viseme frames)"
 
+[node name="AecCheck" type="CheckButton" parent="VBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "AEC (cancel Master-bus playback from mic)"
+
 [node name="Label" type="Label" parent="VBox"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -37,7 +42,7 @@ autowrap_mode = 3
 
 [node name="Hint" type="Label" parent="VBox"]
 layout_mode = 2
-text = "G toggles gate · Speex AGC/VAD/denoise always on"
+text = "G toggles gate · A toggles AEC · Speex AGC/VAD/denoise on"
 horizontal_alignment = 1
 
 [node name="VisemeSystemStub" type="Node" parent="."]

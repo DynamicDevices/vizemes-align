@@ -10,6 +10,7 @@ const PULL_MAX := 4096
 
 @onready var _label: Label = %Label
 @onready var _vad_gate: CheckButton = %VadGate
+@onready var _aec: CheckButton = %AecCheck
 
 var _pipe
 var _target: Node
@@ -18,6 +19,8 @@ var _last_ovr: PackedFloat32Array = PackedFloat32Array()
 var _input_ok := false
 var _hard_bytes := PackedByteArray()
 var _gate_on := false
+var _aec_on := false
+var _far_capture: AudioEffectCapture
 
 
 func _ready() -> void:
@@ -42,6 +45,8 @@ func _ready() -> void:
 
 	_vad_gate.button_pressed = false
 	_vad_gate.toggled.connect(_on_vad_gate_toggled)
+	_aec.button_pressed = false
+	_aec.toggled.connect(_on_aec_toggled)
 
 	if not ProjectSettings.get_setting("audio/driver/enable_input", false):
 		ProjectSettings.set_setting("audio/driver/enable_input", true)
@@ -57,6 +62,17 @@ func _ready() -> void:
 	]
 
 
+func _ensure_far_capture() -> void:
+	## Capture Master output as AEC far-end (whatever Godot is playing).
+	if _far_capture != null:
+		return
+	var master := AudioServer.get_bus_index(&"Master")
+	if master < 0:
+		return
+	_far_capture = AudioEffectCapture.new()
+	AudioServer.add_bus_effect(master, _far_capture)
+
+
 func _on_vad_gate_toggled(pressed: bool) -> void:
 	_gate_on = pressed
 	if _pipe != null and _pipe.has_method("set_vad_gate"):
@@ -64,10 +80,22 @@ func _on_vad_gate_toggled(pressed: bool) -> void:
 		_pipe.begin_stream()
 
 
+func _on_aec_toggled(pressed: bool) -> void:
+	_aec_on = pressed
+	if _pipe == null or not _pipe.has_method("set_aec"):
+		return
+	if pressed:
+		_ensure_far_capture()
+	_pipe.set_aec(pressed)
+	_pipe.begin_stream()
+
+
 func _unhandled_key_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.keycode == KEY_G:
 			_vad_gate.button_pressed = not _vad_gate.button_pressed
+		elif event.keycode == KEY_A:
+			_aec.button_pressed = not _aec.button_pressed
 
 
 func _exit_tree() -> void:
@@ -78,6 +106,12 @@ func _exit_tree() -> void:
 func _process(_delta: float) -> void:
 	if not _input_ok or _pipe == null or _target == null:
 		return
+	if _aec_on and _far_capture != null:
+		var far_n: int = _far_capture.get_frames_available()
+		if far_n > 0:
+			var far_buf: PackedVector2Array = _far_capture.get_buffer(mini(far_n, PULL_MAX))
+			if not far_buf.is_empty():
+				_pipe.feed_far_end_stereo(far_buf, int(round(AudioServer.get_mix_rate())))
 	var avail := AudioServer.get_input_frames_available()
 	if avail <= 0:
 		return
@@ -95,16 +129,17 @@ func _process(_delta: float) -> void:
 		_last_ovr = _pipe.last_ovr
 	var vad_s := str(_pipe.last_vad()) if _pipe.has_method("last_vad") else "?"
 	var gate_s := "on" if _gate_on else "off"
+	var aec_s := "on" if _aec_on else "off"
 	if _last_ovr.size() > 0:
 		var top := VisemeUtils.argmax(_last_ovr)
 		var hb := 0
 		if not _hard_bytes.is_empty():
 			hb = _hard_bytes[_hard_bytes.size() - 1]
-		_label.text = "viseme=%s  frames=%d  hard=%dB last=0x%02X  via=%s  in=%.0fHz  vad=%s  gate=%s" % [
+		_label.text = "viseme=%s  frames=%d  hard=%dB last=0x%02X  via=%s  in=%.0fHz  vad=%s  gate=%s  aec=%s" % [
 			VisemeUtils.OVR_NAMES[top], _frames, _hard_bytes.size(), hb, _target.name,
-			AudioServer.get_input_mix_rate(), vad_s, gate_s
+			AudioServer.get_input_mix_rate(), vad_s, gate_s, aec_s
 		]
 	else:
-		_label.text = "Listening… frames=%d  vad=%s  gate=%s  (silence dropped when gate on)" % [
-			_frames, vad_s, gate_s
+		_label.text = "Listening… frames=%d  vad=%s  gate=%s  aec=%s  (silence dropped when gate on)" % [
+			_frames, vad_s, gate_s, aec_s
 		]

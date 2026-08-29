@@ -115,6 +115,7 @@ obj_mel = env_mel_cpp.SharedObject("build/MelFrontend", "src/MelFrontend.cpp")
 obj_fx = env_mel_cpp.SharedObject("build/MelAudioEffect", "src/MelAudioEffect.cpp")
 obj_reg = env_mel_cpp.SharedObject("build/register_types", "src/register_types.cpp")
 obj_pp = env_pp_cpp.SharedObject("build/MelSpeexPreprocess", "src/MelSpeexPreprocess.cpp")
+obj_aec = env_pp_cpp.SharedObject("build/MelSpeexEcho", "src/MelSpeexEcho.cpp")
 
 env_link = env.Clone()
 if env_link["platform"] == "linux":
@@ -132,12 +133,12 @@ if env_link["platform"] == "macos":
             env_link["platform"],
             env_link["target"],
         ),
-        source=[obj_mel, obj_fx, obj_reg, obj_pp],
+        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec],
     )
 else:
     library = env_link.SharedLibrary(
         "../addons/vizemes_mel/bin/lib{}{}{}".format(libname, env_link["suffix"], env_link["SHLIBSUFFIX"]),
-        source=[obj_mel, obj_fx, obj_reg, obj_pp],
+        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec],
     )
 
 Default(library)

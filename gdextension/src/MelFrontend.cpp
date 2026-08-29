@@ -91,6 +91,13 @@ void MelFrontend::_bind_methods()
 	ClassDB::bind_method(D_METHOD("disable_preprocess"), &MelFrontend::disable_preprocess);
 	ClassDB::bind_method(D_METHOD("get_last_vad"), &MelFrontend::get_last_vad);
 	ClassDB::bind_method(D_METHOD("is_preprocess_enabled"), &MelFrontend::is_preprocess_enabled);
+	ClassDB::bind_method(D_METHOD("configure_aec", "filter_ms", "frame_size_ms"),
+			&MelFrontend::configure_aec, DEFVAL(100), DEFVAL(10));
+	ClassDB::bind_method(D_METHOD("disable_aec"), &MelFrontend::disable_aec);
+	ClassDB::bind_method(D_METHOD("is_aec_enabled"), &MelFrontend::is_aec_enabled);
+	ClassDB::bind_method(D_METHOD("push_far_end_pcm", "pcm"), &MelFrontend::push_far_end_pcm);
+	ClassDB::bind_method(D_METHOD("push_far_end_stereo", "frames", "mix_rate"),
+			&MelFrontend::push_far_end_stereo);
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
 	ClassDB::bind_method(D_METHOD("begin_stream"), &MelFrontend::begin_stream);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
@@ -152,6 +159,7 @@ void MelFrontend::reset()
 	clear_stream();
 	destroy_resampler();
 	preprocess.destroy();
+	aec.destroy();
 	cfg = {};
 	context_frames = 0;
 	n_mels = 0;
@@ -189,6 +197,56 @@ bool MelFrontend::is_preprocess_enabled() const
 	return preprocess.is_enabled();
 }
 
+bool MelFrontend::configure_aec(int filter_ms, int frame_size_ms)
+{
+	if (!configured || cfg.sample_rate <= 0) {
+		UtilityFunctions::push_error("MelFrontend.configure_aec: call configure() first");
+		return false;
+	}
+	if (!aec.setup(cfg.sample_rate, frame_size_ms, filter_ms)) {
+		UtilityFunctions::push_error("MelFrontend: Speex AEC init failed");
+		return false;
+	}
+	return true;
+}
+
+void MelFrontend::disable_aec()
+{
+	aec.destroy();
+}
+
+bool MelFrontend::is_aec_enabled() const
+{
+	return aec.is_enabled();
+}
+
+void MelFrontend::push_far_end_pcm(const PackedFloat32Array &pcm)
+{
+	std::lock_guard<std::mutex> lock(stream_mu);
+	if (!aec.is_enabled() || pcm.is_empty()) {
+		return;
+	}
+	aec.push_far_end(pcm.ptr(), (size_t)pcm.size());
+}
+
+void MelFrontend::push_far_end_stereo(const PackedVector2Array &frames, int mix_rate)
+{
+	std::lock_guard<std::mutex> lock(stream_mu);
+	if (!configured || !aec.is_enabled() || frames.is_empty() || mix_rate <= 0) {
+		return;
+	}
+	const int n = (int)frames.size();
+	std::vector<float> mono((size_t)n);
+	for (int i = 0; i < n; i++) {
+		Vector2 v = frames[i];
+		mono[(size_t)i] = 0.5f * (v.x + v.y);
+	}
+	PackedFloat32Array pcm16 = resample_mono(mono.data(), (size_t)n, mix_rate);
+	if (!pcm16.is_empty()) {
+		aec.push_far_end(pcm16.ptr(), (size_t)pcm16.size());
+	}
+}
+
 void MelFrontend::begin_stream()
 {
 	std::lock_guard<std::mutex> lock(stream_mu);
@@ -200,6 +258,7 @@ void MelFrontend::begin_stream()
 		speex_resampler_reset_mem(resampler);
 	}
 	preprocess.clear_pending();
+	aec.clear_pending();
 }
 
 void MelFrontend::enqueue_new_contexts(const Array &fresh)
@@ -314,16 +373,29 @@ void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 		return;
 	}
 
+	const float *near = pcm.ptr();
+	size_t near_n = (size_t)n_in;
+	std::vector<float> after_aec;
+	if (aec.is_enabled()) {
+		after_aec.reserve(near_n);
+		aec.process_and_append(near, near_n, after_aec);
+		near = after_aec.data();
+		near_n = after_aec.size();
+		if (near_n == 0) {
+			return;
+		}
+	}
+
 	if (preprocess.is_enabled()) {
 		std::vector<float> processed;
-		processed.reserve((size_t)n_in);
-		preprocess.process_and_append(pcm.ptr(), (size_t)n_in, processed);
+		processed.reserve(near_n);
+		preprocess.process_and_append(near, near_n, processed);
 		if (!processed.empty()) {
 			append_stream_pcm(processed.data(), processed.size());
 		}
 		return;
 	}
-	append_stream_pcm(pcm.ptr(), (size_t)n_in);
+	append_stream_pcm(near, near_n);
 }
 
 PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int from_rate)
