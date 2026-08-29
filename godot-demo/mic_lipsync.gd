@@ -1,11 +1,10 @@
 extends Node
-## Live mic → push_pcm_contexts → ONNX → VisemeSystem or Stub (editor / GUI run).
+## Live mic → MelFrontend.push_pcm_stereo → ONNX → VisemeSystem or Stub.
 ## Godot 4.6+: AudioServer.get_input_frames + get_input_mix_rate (no capture bus).
 
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
-const TARGET_RATE := 16000
 ## Max frames to pull per tick (keeps _process bounded).
 const PULL_MAX := 4096
 
@@ -17,8 +16,6 @@ var _frames: int = 0
 var _last_ovr: PackedFloat32Array = PackedFloat32Array()
 var _input_ok := false
 var _hard_bytes := PackedByteArray()
-var _hard_acc_pcm := PackedFloat32Array()
-var _hard_need := 320 ## 20 ms @ 16 kHz
 
 
 func _ready() -> void:
@@ -71,20 +68,13 @@ func _process(_delta: float) -> void:
 	var buffer: PackedVector2Array = AudioServer.get_input_frames(n)
 	if buffer.is_empty():
 		return
-	var pcm := VisemeUtils.stereo_to_mono(buffer)
 	var in_rate := int(round(AudioServer.get_input_mix_rate()))
-	pcm = VisemeUtils.resample_pcm(pcm, in_rate, TARGET_RATE)
-	_frames += _pipe.feed_pcm_mono_16k(pcm, _target)
-	# Accumulate 20 ms chunks → hard byte stream (VoIP sideband shape).
-	for s in pcm:
-		_hard_acc_pcm.append(s)
-	while _hard_acc_pcm.size() >= _hard_need:
+	var produced := _pipe.feed_pcm_stereo(buffer, in_rate, _target)
+	_frames += produced
+	# One hard byte per produced context (~10 ms hops; sideband uses 20 ms — pair later).
+	for _i in produced:
 		if _pipe.last_ovr.size() > 0:
 			_hard_bytes.append(VisemeUtils.soft_to_hard_byte(_pipe.last_ovr))
-		var keep := PackedFloat32Array()
-		for i in range(_hard_need, _hard_acc_pcm.size()):
-			keep.append(_hard_acc_pcm[i])
-		_hard_acc_pcm = keep
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
 	if _last_ovr.size() > 0:

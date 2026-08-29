@@ -36,7 +36,7 @@ path plus **MelFrontend** (PCM → flat mel context for `OnnxLoader.predict`).
 cd gdextension
 git submodule update --init --recursive
 scons platform=linux target=template_debug
-# .so → gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+# .so → addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
 ```
 
 Open `../godot-demo/` → run `mel_smoke.tscn` → expect `GODOT_MEL_ONNX_SMOKE_OK`

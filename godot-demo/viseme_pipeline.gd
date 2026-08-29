@@ -22,11 +22,11 @@ func setup(json_path: String, onnx_path: String) -> bool:
 	if mel == null or loader == null:
 		push_error("VisemePipeline: GDExtensions missing")
 		return false
-	if not mel.configure_from_json(json_path):
+	if not VisemeUtils.configure_mel_from_json(mel, json_path):
 		return false
 	if not loader.load_model(onnx_path):
 		return false
-	target_rate = 16000
+	target_rate = int(mel.get_sample_rate()) if mel.get_sample_rate() > 0 else 16000
 	return true
 
 
@@ -44,8 +44,9 @@ func predict_ovr(ctx: PackedFloat32Array) -> PackedFloat32Array:
 
 func push_pcm_to_stub(pcm: PackedFloat32Array, stub: Object) -> int:
 	var frames := 0
-	for ctx_variant in mel.push_pcm_contexts(pcm):
-		var ctx: PackedFloat32Array = ctx_variant
+	mel.push_pcm(pcm)
+	while mel.count_available_contexts() > 0:
+		var ctx: PackedFloat32Array = mel.get_next_context()
 		var ovr := predict_ovr(ctx)
 		if ovr.is_empty():
 			continue
@@ -59,3 +60,19 @@ func feed_pcm_mono_16k(pcm: PackedFloat32Array, target: Object) -> int:
 	if pcm.is_empty():
 		return 0
 	return push_pcm_to_stub(pcm, target)
+
+
+func feed_pcm_stereo(frames: PackedVector2Array, mix_rate: int, target: Object) -> int:
+	if frames.is_empty() or mel == null:
+		return 0
+	mel.push_pcm_stereo(frames, mix_rate)
+	var n := 0
+	while mel.count_available_contexts() > 0:
+		var ctx: PackedFloat32Array = mel.get_next_context()
+		var ovr := predict_ovr(ctx)
+		if ovr.is_empty():
+			continue
+		VisemeTarget.feed(target, ovr)
+		last_ovr = ovr
+		n += 1
+	return n

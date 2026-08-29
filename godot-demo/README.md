@@ -10,7 +10,7 @@ Uses **godot-onnx-loader** and **vizemes MelFrontend** via symlinks (not vendore
   gdextension/                          # MelFrontend GDExtension (scons)
   godot-demo/
     addons/onnx_loader -> ../../../godot-onnx-loader/addons/onnx_loader
-    addons/vizemes_mel -> ../../gdextension/godot
+    addons/vizemes_mel -> ../../addons/vizemes_mel
   export/ci-smoke/                      # ONNX + CSV + ci-fixture.wav
 ```
 
@@ -69,7 +69,7 @@ from the repo root):
 ```bash
 ln -sfn ../../../godot-onnx-loader/addons/onnx_loader godot-demo/addons/onnx_loader
 # MelFrontend (usually already present in the tree):
-#   godot-demo/addons/vizemes_mel -> ../../gdextension/godot
+#   godot-demo/addons/vizemes_mel -> ../../addons/vizemes_mel
 
 nix shell github:nixos/nixpkgs/nixos-26.05#godot_4_6 --command bash -c '
   unset ONNX_ORT_BIN

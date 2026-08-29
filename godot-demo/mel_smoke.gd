@@ -54,7 +54,7 @@ func _ready() -> void:
 		push_error("MelFrontend missing — build gdextension .so")
 		get_tree().quit(1)
 		return
-	if not mel.configure_from_json(json_path):
+	if not VisemeUtils.configure_mel_from_json(mel, json_path):
 		push_error("MelFrontend configure failed: %s" % json_path)
 		get_tree().quit(1)
 		return

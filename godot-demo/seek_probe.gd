@@ -190,7 +190,7 @@ func _run_probe() -> int:
 		_set_status("MelFrontend missing — build gdextension .so")
 		push_error(_status.text)
 		return 1
-	if not mel.configure_from_json(json_path):
+	if not VisemeUtils.configure_mel_from_json(mel, json_path):
 		_set_status("MelFrontend configure failed")
 		push_error(_status.text)
 		return 1

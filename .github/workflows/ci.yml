@@ -218,7 +218,7 @@ jobs:
             export SCONS_CACHE='"$MEL_SCONS_CACHE"'
             cd gdextension
             scons -j"$(nproc)" platform=linux target=template_debug
-            test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+            test -f ../addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
 
       - name: Godot mel+lipsync smoke (NixOS, Godot 4.6 MS-ORT)
@@ -236,7 +236,7 @@ jobs:
             git -C "$ONNX_LOADER_ROOT" submodule update --init --recursive
           fi
           ln -sfn "$ONNX_LOADER_ROOT/addons/onnx_loader" godot-demo/addons/onnx_loader
-          test -f gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+          test -f addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/ci-fixture.wav
           export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"

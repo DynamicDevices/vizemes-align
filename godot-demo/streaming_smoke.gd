@@ -1,5 +1,5 @@
 extends Node
-## Chunked PCM → push_pcm_contexts (live mic shape) → ONNX.
+## Chunked PCM → push_pcm / get_next_context (live mic shape) → ONNX.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
 const CHUNK_SAMPLES := 1600
@@ -17,7 +17,7 @@ func _ready() -> void:
 		push_error("MelFrontend or OnnxLoader missing")
 		get_tree().quit(1)
 		return
-	if not mel.configure_from_json(json_path) or not loader.load_model(onnx_path):
+	if not VisemeUtils.configure_mel_from_json(mel, json_path) or not loader.load_model(onnx_path):
 		get_tree().quit(1)
 		return
 
@@ -32,12 +32,13 @@ func _ready() -> void:
 	while pos < pcm.size():
 		var end := mini(pos + CHUNK_SAMPLES, pcm.size())
 		var chunk := pcm.slice(pos, end)
-		for ctx_variant in mel.push_pcm_contexts(chunk):
-			stream_ctx.append(ctx_variant)
+		mel.push_pcm(chunk)
+		while mel.count_available_contexts() > 0:
+			stream_ctx.append(mel.get_next_context())
 		pos = end
 
 	if stream_ctx.is_empty():
-		push_error("push_pcm_contexts produced no contexts")
+		push_error("stream queue produced no contexts")
 		get_tree().quit(1)
 		return
 

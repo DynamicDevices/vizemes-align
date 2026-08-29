@@ -18,7 +18,7 @@ if [[ -z "$GODOT" || ! -x "$GODOT" ]]; then
 	done
 fi
 EXT_LIST="$ROOT/.godot/extension_list.cfg"
-MEL_SO="$ROOT/../gdextension/godot/bin/libvizemes_mel.linux.template_debug.x86_64.so"
+MEL_SO="$ROOT/../addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so"
 
 if [[ ! -x "$GODOT" ]]; then
 	echo "GODOT_BIN must point at Godot 4.6+ (try: ~/Downloads/Godot_v4.6.1-stable_linux.x86_64 or godot-onnx-loader tools/godot_46_ms_ort.sh)" >&2

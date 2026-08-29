@@ -1,9 +1,11 @@
 #include "MelFrontend.hpp"
 
 #include <godot_cpp/core/class_db.hpp>
+#include <godot_cpp/variant/vector2.hpp>
 
 #include "mel_spectrogram.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
@@ -25,49 +27,66 @@ void MelFrontend::clear_stream()
 	stream_pcm_n = 0;
 	stream_pcm_cap = 0;
 	stream_contexts_emitted = 0;
+	context_queue.clear();
 }
 
 void MelFrontend::_bind_methods()
 {
-	ClassDB::bind_method(D_METHOD("configure_from_json", "model_json_path"),
-			&MelFrontend::configure_from_json);
+	ClassDB::bind_method(D_METHOD("configure", "context_frames", "n_mels", "sample_rate",
+						   "hop_length_samples", "window_length_samples", "n_fft", "fmin", "fmax",
+						   "n_visemes", "input_features"),
+			&MelFrontend::configure, DEFVAL(15), DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("reset"), &MelFrontend::reset);
 	ClassDB::bind_method(D_METHOD("begin_stream"), &MelFrontend::begin_stream);
 	ClassDB::bind_method(D_METHOD("push_pcm", "pcm"), &MelFrontend::push_pcm);
-	ClassDB::bind_method(D_METHOD("push_pcm_contexts", "pcm"), &MelFrontend::push_pcm_contexts);
-	ClassDB::bind_method(D_METHOD("build_utterance_contexts", "pcm"), &MelFrontend::build_utterance_contexts);
+	ClassDB::bind_method(D_METHOD("push_pcm_stereo", "frames", "mix_rate"),
+			&MelFrontend::push_pcm_stereo);
+	ClassDB::bind_method(D_METHOD("count_available_contexts"), &MelFrontend::count_available_contexts);
+	ClassDB::bind_method(D_METHOD("get_next_context"), &MelFrontend::get_next_context);
+	ClassDB::bind_method(D_METHOD("last_context_time_offset"), &MelFrontend::last_context_time_offset);
+	ClassDB::bind_method(D_METHOD("build_utterance_contexts", "pcm"),
+			&MelFrontend::build_utterance_contexts);
 	ClassDB::bind_method(D_METHOD("get_input_features"), &MelFrontend::get_input_features);
 	ClassDB::bind_method(D_METHOD("get_context_frames"), &MelFrontend::get_context_frames);
 	ClassDB::bind_method(D_METHOD("get_n_mels"), &MelFrontend::get_n_mels);
+	ClassDB::bind_method(D_METHOD("get_sample_rate"), &MelFrontend::get_sample_rate);
+	ClassDB::bind_method(D_METHOD("get_hop_length_samples"), &MelFrontend::get_hop_length_samples);
 }
 
-bool MelFrontend::configure_from_json(const String &model_json_path)
+bool MelFrontend::apply_config()
 {
-	reset();
 	if (!ops) {
 		return false;
 	}
-
-	CharString path = model_json_path.utf8();
-	if (vizemes_sidecar_load(path.get_data(), &meta) != 0) {
-		return false;
-	}
-
-	VizemesFrontendConfig cfg{};
-	cfg.sample_rate = meta.sample_rate;
-	cfg.hop_length_samples = meta.hop_length_samples;
-	cfg.window_length_samples = meta.window_length_samples;
-	cfg.n_features = meta.n_mels;
-	cfg.n_fft = meta.n_fft;
-	cfg.fmin = meta.fmin;
-	cfg.fmax = meta.fmax;
+	cfg.n_features = n_mels;
 	cfg.top_db = 80.f;
 	if (ops->init && ops->init(&cfg) != 0) {
 		return false;
 	}
-
 	configured = true;
 	return true;
+}
+
+bool MelFrontend::configure(int p_context_frames, int p_n_mels, int p_sample_rate,
+		int p_hop_length_samples, int p_window_length_samples, int p_n_fft, float p_fmin,
+		float p_fmax, int p_n_visemes, int p_input_features)
+{
+	reset();
+	if (p_context_frames <= 0 || p_n_mels <= 0 || p_sample_rate <= 0 || p_hop_length_samples <= 0 ||
+			p_window_length_samples <= 0 || p_n_fft <= 0) {
+		return false;
+	}
+	context_frames = p_context_frames;
+	n_mels = p_n_mels;
+	n_visemes = p_n_visemes > 0 ? p_n_visemes : 15;
+	input_features = p_input_features > 0 ? p_input_features : (p_context_frames * p_n_mels);
+	cfg.sample_rate = p_sample_rate;
+	cfg.hop_length_samples = p_hop_length_samples;
+	cfg.window_length_samples = p_window_length_samples;
+	cfg.n_fft = p_n_fft;
+	cfg.fmin = p_fmin;
+	cfg.fmax = p_fmax;
+	return apply_config();
 }
 
 void MelFrontend::reset()
@@ -76,7 +95,11 @@ void MelFrontend::reset()
 		ops->free();
 	}
 	clear_stream();
-	meta = {};
+	cfg = {};
+	context_frames = 0;
+	n_mels = 0;
+	input_features = 0;
+	n_visemes = 0;
 	configured = false;
 }
 
@@ -88,6 +111,13 @@ void MelFrontend::begin_stream()
 	clear_stream();
 }
 
+void MelFrontend::enqueue_new_contexts(const Array &fresh)
+{
+	for (int i = 0; i < fresh.size(); i++) {
+		context_queue.push_back(fresh[i]);
+	}
+}
+
 Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const
 {
 	Array out;
@@ -95,10 +125,10 @@ Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t 
 		return out;
 	}
 
-	const int nm = meta.n_mels;
-	const int ctx = meta.context_frames;
+	const int nm = n_mels;
+	const int ctx = context_frames;
 
-	size_t max_frames = n_samples / (size_t)meta.hop_length_samples + 16;
+	size_t max_frames = n_samples / (size_t)cfg.hop_length_samples + 16;
 	float *mel = (float *)calloc(max_frames * (size_t)nm, sizeof(float));
 	if (!mel) {
 		return out;
@@ -146,7 +176,7 @@ Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t 
 	for (size_t ci = skip_contexts; ci < n_contexts; ci++) {
 		size_t i = ci + (size_t)ctx - 1;
 		PackedFloat32Array flat;
-		flat.resize(meta.input_features);
+		flat.resize(input_features);
 		for (int f = 0; f < ctx; f++) {
 			size_t frame_idx = i - (size_t)ctx + 1 + (size_t)f;
 			for (int j = 0; j < nm; j++) {
@@ -160,32 +190,21 @@ Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t 
 	return out;
 }
 
-PackedFloat32Array MelFrontend::push_pcm(const PackedFloat32Array &pcm)
+void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 {
-	Array contexts = push_pcm_contexts(pcm);
-	if (contexts.is_empty()) {
-		return PackedFloat32Array();
-	}
-	return contexts[contexts.size() - 1];
-}
-
-Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
-{
-	Array out;
 	if (!configured) {
-		return out;
+		return;
 	}
-
 	const int n_in = (int)pcm.size();
 	if (n_in <= 0) {
-		return out;
+		return;
 	}
 
 	if (stream_pcm_n + (size_t)n_in > stream_pcm_cap) {
 		size_t need = stream_pcm_n + (size_t)n_in;
 		float *nb = (float *)realloc(stream_pcm, need * sizeof(float));
 		if (!nb) {
-			return out;
+			return;
 		}
 		stream_pcm = nb;
 		stream_pcm_cap = need;
@@ -193,27 +212,118 @@ Array MelFrontend::push_pcm_contexts(const PackedFloat32Array &pcm)
 	memcpy(stream_pcm + stream_pcm_n, pcm.ptr(), (size_t)n_in * sizeof(float));
 	stream_pcm_n += (size_t)n_in;
 
-	out = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
-	stream_contexts_emitted += (size_t)out.size();
+	Array fresh = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
+	stream_contexts_emitted += (size_t)fresh.size();
+	enqueue_new_contexts(fresh);
+}
+
+PackedFloat32Array MelFrontend::resample_mono(const float *mono, size_t n, int from_rate) const
+{
+	PackedFloat32Array out;
+	if (!mono || n == 0 || from_rate <= 0 || cfg.sample_rate <= 0) {
+		return out;
+	}
+	if (from_rate == cfg.sample_rate) {
+		out.resize((int)n);
+		memcpy(out.ptrw(), mono, n * sizeof(float));
+		return out;
+	}
+	const double ratio = (double)cfg.sample_rate / (double)from_rate;
+	const int out_n = std::max(1, (int)floor((double)n * ratio + 0.5));
+	out.resize(out_n);
+	for (int i = 0; i < out_n; i++) {
+		double src = (double)i / ratio;
+		size_t i0 = (size_t)src;
+		size_t i1 = i0 + 1 < n ? i0 + 1 : n - 1;
+		float frac = (float)(src - (double)i0);
+		out[i] = mono[i0] * (1.f - frac) + mono[i1] * frac;
+	}
 	return out;
+}
+
+void MelFrontend::push_pcm_stereo(const PackedVector2Array &frames, int mix_rate)
+{
+	if (!configured || frames.is_empty() || mix_rate <= 0) {
+		return;
+	}
+	const int n = (int)frames.size();
+	std::vector<float> mono((size_t)n);
+	for (int i = 0; i < n; i++) {
+		Vector2 v = frames[i];
+		mono[(size_t)i] = 0.5f * (v.x + v.y);
+	}
+	PackedFloat32Array pcm16 = resample_mono(mono.data(), (size_t)n, mix_rate);
+	push_pcm(pcm16);
+}
+
+int MelFrontend::count_available_contexts() const
+{
+	return (int)context_queue.size();
+}
+
+PackedFloat32Array MelFrontend::get_next_context()
+{
+	if (context_queue.empty()) {
+		return PackedFloat32Array();
+	}
+	PackedFloat32Array front = context_queue.front();
+	context_queue.erase(context_queue.begin());
+	return front;
+}
+
+float MelFrontend::last_context_time_offset() const
+{
+	if (!configured || cfg.sample_rate <= 0 || cfg.hop_length_samples <= 0) {
+		return 0.f;
+	}
+	const size_t queued = context_queue.size();
+	if (stream_contexts_emitted == 0 && queued == 0) {
+		return (float)stream_pcm_n / (float)cfg.sample_rate;
+	}
+	const size_t next_ci = stream_contexts_emitted - queued;
+	const size_t end_frame = next_ci + (size_t)context_frames - 1;
+	const double context_end_s =
+			((double)(end_frame + 1) * (double)cfg.hop_length_samples) / (double)cfg.sample_rate;
+	const double now_s = (double)stream_pcm_n / (double)cfg.sample_rate;
+	double off = now_s - context_end_s;
+	if (off < 0.0) {
+		off = 0.0;
+	}
+	return (float)off;
 }
 
 Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
 {
-	return contexts_from_pcm(pcm.ptr(), (size_t)pcm.size(), 0);
+	begin_stream();
+	push_pcm(pcm);
+	Array out;
+	while (count_available_contexts() > 0) {
+		out.push_back(get_next_context());
+	}
+	return out;
 }
 
 int MelFrontend::get_input_features() const
 {
-	return configured ? meta.input_features : 0;
+	return configured ? input_features : 0;
 }
 
 int MelFrontend::get_context_frames() const
 {
-	return configured ? meta.context_frames : 0;
+	return configured ? context_frames : 0;
 }
 
 int MelFrontend::get_n_mels() const
 {
-	return configured ? meta.n_mels : 0;
+	return configured ? n_mels : 0;
+}
+
+int MelFrontend::get_sample_rate() const
+{
+	return configured ? cfg.sample_rate : 0;
+}
+
+int MelFrontend::get_hop_length_samples() const
+{
+	return configured ? cfg.hop_length_samples : 0;
 }
