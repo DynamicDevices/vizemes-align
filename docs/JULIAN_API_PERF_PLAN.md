@@ -61,7 +61,9 @@ Move today’s `gdextension/godot/` → `addons/vizemes_mel/`. SConstruct writes
 
 ### 3a configure (msg 826)
 
-- **Drop** host `fopen` + hand-rolled JSON for the happy path.
+- **Done (host C):** dropped hand-rolled `sidecar_json.c`. Python `emit_model_meta.py`
+  (stdlib `json`) writes flat `model.meta`; C loads `key=value` only. Godot happy
+  path stays GDScript `JSON.parse_string` → `MelFrontend.configure(...)`.
 - Prefer:
   ```gdscript
   mel.configure(context_frames, n_mels, sample_rate, hop, n_fft, win, fmin, fmax, …)

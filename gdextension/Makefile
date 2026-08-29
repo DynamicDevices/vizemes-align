@@ -5,6 +5,8 @@
 # ORT (nix develop .#train exports ORT_ROOT, or release tarball):
 #   make ORT_ROOT=/path/to/onnxruntime-linux-x64-1.20.1
 #   make ORT_ROOT=... smoke
+#
+# model.json → model.meta via tools/emit_model_meta.py (stdlib json; no C JSON parser).
 
 CC ?= gcc
 CFLAGS ?= -std=c11 -Wall -Wextra -O2 -fPIC
@@ -13,12 +15,14 @@ LDFLAGS ?=
 LDLIBS = -lm
 
 MEL_OBJS = frontends/mel/mel_spectrogram.o src/mel_frontend.o
+META = ../export/ci-smoke/model.meta
+META_JSON = ../export/ci-smoke/model.json
 
 ifdef ORT_ROOT
   INCLUDES += -I$(ORT_ROOT)/include
   LDFLAGS += -L$(ORT_ROOT)/lib -Wl,-rpath,$(ORT_ROOT)/lib
   LDLIBS += -lonnxruntime
-  RUNTIME_OBJS = src/viseme_runtime.o src/sidecar_json.o
+  RUNTIME_OBJS = src/viseme_runtime.o src/model_meta.o
   CFLAGS += -DVIZEMES_WITH_ORT=1
 else
   RUNTIME_OBJS = src/viseme_runtime_stub.o
@@ -26,9 +30,14 @@ endif
 
 OBJS = $(MEL_OBJS) $(RUNTIME_OBJS)
 
-.PHONY: all clean smoke smoke-csv dump-mel
+.PHONY: all clean smoke smoke-csv dump-mel model-meta
 
 all: build/libvizemes_runtime.a
+
+$(META): $(META_JSON) tools/emit_model_meta.py
+	python3 tools/emit_model_meta.py $(META_JSON) $(META)
+
+model-meta: $(META)
 
 build/libvizemes_runtime.a: $(OBJS)
 	mkdir -p build
@@ -48,28 +57,28 @@ endif
 	mkdir -p build
 	$(CC) $(CFLAGS) $(INCLUDES) -o $@ tools/smoke_csv.c -Lbuild -lvizemes_runtime $(LDFLAGS) $(LDLIBS)
 
-smoke: build/smoke_context
+smoke: build/smoke_context $(META)
 	python3 tools/dump_demo_row.py >/tmp/vizemes-dump-row.txt
 	# Match C softmax-argmax to Python ORT (labels on ci-smoke are weak).
 	PRED=$$(python3 tools/ort_pred_row.py); \
-	./build/smoke_context ../export/ci-smoke/model.json ../export/ci-smoke/model.onnx \
+	./build/smoke_context $(META) ../export/ci-smoke/model.onnx \
 		../export/ci-smoke/demo_row0.f32 $$PRED
 
 # All CSV windows through C ORT — same table shape as scripts/sanity_check_onnx.py
-smoke-csv: build/smoke_csv
-	./build/smoke_csv ../export/ci-smoke/model.json ../export/ci-smoke/model.onnx \
+smoke-csv: build/smoke_csv $(META)
+	./build/smoke_csv $(META) ../export/ci-smoke/model.onnx \
 		../export/ci-smoke/demo_inputs.csv
 
-build/dump_mel: tools/dump_mel.c frontends/mel/mel_spectrogram.o src/sidecar_json.o
+build/dump_mel: tools/dump_mel.c frontends/mel/mel_spectrogram.o src/model_meta.o
 	mkdir -p build
 	$(CC) -std=c11 -Wall -Wextra -O2 -Iinclude -Ifrontends/mel -o $@ tools/dump_mel.c \
-		frontends/mel/mel_spectrogram.o src/sidecar_json.o -lm
+		frontends/mel/mel_spectrogram.o src/model_meta.o -lm
 
-dump-mel: build/dump_mel
+dump-mel: build/dump_mel $(META)
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDES) -c -o $@ $<
 
 clean:
-	rm -f $(MEL_OBJS) src/sidecar_json.o src/viseme_runtime.o src/viseme_runtime_stub.o \
+	rm -f $(MEL_OBJS) src/model_meta.o src/viseme_runtime.o src/viseme_runtime_stub.o \
 		build/libvizemes_runtime.a build/smoke_context build/smoke_csv build/dump_mel

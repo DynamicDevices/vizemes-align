@@ -11,14 +11,15 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
-from mel_features_c import mel_features_c  # noqa: E402
+from mel_features_c import ensure_model_meta, mel_features_c  # noqa: E402
 
 
 def run_dump_mel(model_json: Path, wav: Path, dump_bin: Path) -> np.ndarray:
     import subprocess
 
+    meta = ensure_model_meta(model_json)
     proc = subprocess.run(
-        [str(dump_bin), str(model_json), str(wav)],
+        [str(dump_bin), str(meta), str(wav)],
         check=True,
         capture_output=True,
         text=True,

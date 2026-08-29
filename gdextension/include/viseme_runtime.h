@@ -4,7 +4,7 @@
  * Godot side (goatchurchprime/lipsync shape): feed float weights into
  * VisemeSystem.set_visemes(vv). OVR/ReadyPlayerMe order is typically:
  *   sil, PP, FF, TH, DD, kk, CH, SS, nn, RR, aa, E, I/ih, O/oh, U/ou [, LA]
- * Smoke MLP outputs 15 classes (no LA); map names via model.json "visemes".
+ * Smoke MLP outputs 15 classes (no LA); map names via model.meta viseme_N= lines.
  *
  * GDExtension binding comes next; this header is the non-Godot SoT.
  */
@@ -20,10 +20,11 @@ extern "C" {
 typedef struct VizemesRuntime VizemesRuntime;
 
 /**
- * Load sidecar JSON + ONNX. frontend may be vizemes_frontend_mel() or later LPC.
+ * Load flat model.meta (from emit_model_meta.py) + ONNX.
+ * frontend may be vizemes_frontend_mel() or later LPC.
  * Returns NULL on failure.
  */
-VizemesRuntime *vizemes_runtime_create(const char *model_json_path,
+VizemesRuntime *vizemes_runtime_create(const char *model_meta_path,
 				       const char *model_onnx_path,
 				       const VizemesFrontendOps *frontend);
 
@@ -34,7 +35,7 @@ int vizemes_runtime_push_pcm(VizemesRuntime *rt, const float *pcm, int n_samples
 			     float *viseme_out, int max_frames, int *n_visemes_out);
 
 /**
- * Run one precomputed flat mel context (length = input_features from sidecar).
+ * Run one precomputed flat mel context (length = input_features from model.meta).
  * Writes n_visemes softmax weights. Used by host smoke (skips PCM→mel).
  */
 int vizemes_runtime_run_context(VizemesRuntime *rt, const float *flat_ctx, float *viseme_out);

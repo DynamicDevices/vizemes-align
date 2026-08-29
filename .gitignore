@@ -18,6 +18,7 @@ gdextension/godot/bin/
 addons/vizemes_mel/bin/
 godot-demo/.godot/
 export/ci-smoke/demo_row0.f32
+export/ci-smoke/model.meta
 export/debug/
 
 .cursor/*

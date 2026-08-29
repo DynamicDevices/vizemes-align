@@ -3,7 +3,7 @@
  * Build with ORT_ROOT pointing at an onnxruntime prefix (nix or release tarball).
  */
 #include "viseme_runtime.h"
-#include "sidecar_json.h"
+#include "model_meta.h"
 
 #include <math.h>
 #include <stdio.h>
@@ -111,17 +111,17 @@ done:
 	return rc;
 }
 
-VizemesRuntime *vizemes_runtime_create(const char *model_json_path,
+VizemesRuntime *vizemes_runtime_create(const char *model_meta_path,
 				       const char *model_onnx_path,
 				       const VizemesFrontendOps *frontend)
 {
-	if (!model_json_path || !model_onnx_path || !frontend) {
+	if (!model_meta_path || !model_onnx_path || !frontend) {
 		return NULL;
 	}
 
 	VizemesModelMeta meta;
-	if (vizemes_sidecar_load(model_json_path, &meta) != 0) {
-		fprintf(stderr, "sidecar load failed: %s\n", model_json_path);
+	if (vizemes_meta_load(model_meta_path, &meta) != 0) {
+		fprintf(stderr, "model.meta load failed: %s\n", model_meta_path);
 		return NULL;
 	}
 

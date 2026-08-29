@@ -10,7 +10,18 @@ import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
 DUMP_MEL = ROOT / "gdextension/build/dump_mel"
+EMIT_META = ROOT / "gdextension/tools/emit_model_meta.py"
 DEFAULT_MODEL_JSON = ROOT / "export/ci-smoke/model.json"
+
+
+def ensure_model_meta(model_json: Path) -> Path:
+    """Emit flat model.meta from model.json (stdlib json; C reads key=value only)."""
+    meta = model_json.with_suffix(".meta")
+    subprocess.run(
+        [sys.executable, str(EMIT_META), str(model_json), str(meta)],
+        check=True,
+    )
+    return meta
 
 
 def _ensure_dump_mel() -> Path:
@@ -22,9 +33,10 @@ def _ensure_dump_mel() -> Path:
 def mel_features_c(wav_path: Path, model_json: Path | None = None) -> np.ndarray:
     """Return (T, n_mels) float32 log-mel from host C (torchaudio-compatible batch path)."""
     model_json = model_json or DEFAULT_MODEL_JSON
+    meta = ensure_model_meta(model_json)
     dump = _ensure_dump_mel()
     proc = subprocess.run(
-        [str(dump), str(model_json), str(wav_path)],
+        [str(dump), str(meta), str(wav_path)],
         check=True,
         capture_output=True,
         text=True,
