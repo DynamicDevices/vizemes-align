@@ -35,6 +35,31 @@ static func run_python(script_rel: String, args: PackedStringArray) -> Dictionar
 	return {"ok": code == 0, "code": code, "output": text}
 
 
+static func resolve_model_dir() -> String:
+	## Absolute dir with model.onnx / model_final.onnx (+ optional json).
+	var root := repo_root()
+	var demo := ProjectSettings.globalize_path("res://")
+	var env := OS.get_environment("VISEMES_MODEL_DIR")
+	var candidates: Array[String] = []
+	if not env.is_empty():
+		candidates.append(env if env.is_absolute_path() else root.path_join(env))
+	candidates.append_array([
+		demo.path_join("onnxmodels/tier-b"),
+		root.path_join("export/tier-b"),
+		demo.path_join("onnxmodels/tier-b-tcn"),
+		root.path_join("export/tier-b-tcn"),
+		root.path_join("export/ci-smoke"),
+	])
+	for dir in candidates:
+		if FileAccess.file_exists(dir.path_join("model.onnx")) \
+				or FileAccess.file_exists(dir.path_join("model_final.onnx")):
+			# Skip TCN for Mel+flat MLP path until sequence infer lands.
+			if dir.contains("tier-b-tcn"):
+				continue
+			return dir
+	return root.path_join("export/ci-smoke")
+
+
 static func export_seek_probe(stem: String, seeks: int = 8, subset: String = DEFAULT_SUBSET) -> Dictionary:
 	var args := PackedStringArray([
 		"--subset", subset,
