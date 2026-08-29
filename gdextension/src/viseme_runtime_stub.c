@@ -10,11 +10,11 @@ struct VizemesRuntime {
 	const VizemesFrontendOps *frontend;
 };
 
-VizemesRuntime *vizemes_runtime_create(const char *model_json_path,
+VizemesRuntime *vizemes_runtime_create(const char *model_meta_path,
 				       const char *model_onnx_path,
 				       const VizemesFrontendOps *frontend)
 {
-	(void)model_json_path;
+	(void)model_meta_path;
 	(void)model_onnx_path;
 	if (!frontend) {
 		return NULL;

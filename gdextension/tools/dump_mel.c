@@ -2,10 +2,10 @@
  * Dump C mel frames for parity check vs torchaudio (scripts/compare_mel_parity.py).
  *
  *   make dump-mel
- *   ./build/dump_mel ../export/ci-smoke/model.json ../export/ci-smoke/ci-fixture.wav > /tmp/c-mel.txt
+ *   ./build/dump_mel ../export/ci-smoke/model.meta ../export/ci-smoke/ci-fixture.wav > /tmp/c-mel.txt
  */
 #include "mel_spectrogram.h"
-#include "sidecar_json.h"
+#include "model_meta.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -97,13 +97,13 @@ int main(int argc, char **argv)
 		argv++;
 	}
 	if (argc != 3) {
-		fprintf(stderr, "usage: %s [--power] model.json audio.wav\n", argv[0]);
+		fprintf(stderr, "usage: %s [--power] model.meta audio.wav\n", argv[0]);
 		return 2;
 	}
 
 	VizemesModelMeta meta;
-	if (vizemes_sidecar_load(argv[1], &meta) != 0) {
-		fprintf(stderr, "sidecar load failed: %s\n", argv[1]);
+	if (vizemes_meta_load(argv[1], &meta) != 0) {
+		fprintf(stderr, "model.meta load failed: %s\n", argv[1]);
 		return 1;
 	}
 

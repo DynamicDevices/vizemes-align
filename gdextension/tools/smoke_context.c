@@ -47,17 +47,17 @@ int main(int argc, char **argv)
 {
 	if (argc < 4) {
 		fprintf(stderr,
-			"usage: %s model.json model.onnx context.f32 [expect_class_id]\n",
+			"usage: %s model.meta model.onnx context.f32 [expect_class_id]\n",
 			argv[0]);
 		return 2;
 	}
-	const char *json_path = argv[1];
+	const char *meta_path = argv[1];
 	const char *onnx_path = argv[2];
 	const char *f32_path = argv[3];
 	int expect = argc >= 5 ? atoi(argv[4]) : -1;
 
 	VizemesRuntime *rt =
-		vizemes_runtime_create(json_path, onnx_path, vizemes_frontend_mel());
+		vizemes_runtime_create(meta_path, onnx_path, vizemes_frontend_mel());
 	if (!rt) {
 		fprintf(stderr, "vizemes_runtime_create failed\n");
 		return 1;

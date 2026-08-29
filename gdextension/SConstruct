@@ -19,7 +19,6 @@ env = SConscript("godot-cpp/SConstruct")
 mel_c = [
     "frontends/mel/mel_spectrogram.c",
     "src/mel_frontend.c",
-    "src/sidecar_json.c",
 ]
 inc = ["include", "frontends/mel", "src"]
 

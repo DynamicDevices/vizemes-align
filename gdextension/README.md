@@ -7,7 +7,9 @@ addon — not a bespoke ORT GDExtension in this repo.
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
 Waveform→features stays swappable (mel, LPC, …). Each exported ONNX keeps its
-own sidecar contract (`export/ci-smoke/model.json`).
+own model contract (`export/ci-smoke/model.json`). Host C tools consume a flat
+`model.meta` emitted by `tools/emit_model_meta.py` (stdlib `json` — no hand-rolled
+C JSON parser). Godot keeps parsing `model.json` in GDScript.
 
 ## Layout
 
@@ -15,9 +17,11 @@ own sidecar contract (`export/ci-smoke/model.json`).
 |------|------|
 | `include/feature_frontend.h` | Pluggable frontend ops |
 | `include/viseme_runtime.h` | PCM → viseme weights (C API) |
-| `include/sidecar_json.h` | Tiny `model.json` reader (no cJSON) |
+| `include/model_meta.h` | Flat `model.meta` reader (`key=value`) |
+| `tools/emit_model_meta.py` | `model.json` → `model.meta` (stdlib json) |
 | `frontends/mel/` | First impl (vendored mel C + ORIGIN.md) |
 | `src/mel_frontend.c` | Mel → `VizemesFrontendOps` |
+| `src/model_meta.c` | Host meta loader |
 | `src/viseme_runtime.c` | Host ORT runtime (`ORT_ROOT` required) |
 | `src/viseme_runtime_stub.c` | API stub when built without ORT |
 | `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |

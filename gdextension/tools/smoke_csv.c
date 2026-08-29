@@ -5,111 +5,32 @@
  *   make ORT_ROOT=... smoke-csv
  */
 #include "feature_frontend.h"
+#include "model_meta.h"
 #include "viseme_runtime.h"
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #define MAX_LINE (1600 * 24 + 256)
-#define MAX_VISEMES 32
+#define MAX_VISEMES VIZEMES_META_MAX_VISEMES
 
 typedef struct {
 	char names[MAX_VISEMES][32];
 	int n;
 } NameTable;
 
-static int load_names_from_json(const char *json_path, NameTable *nt)
+static int load_names_from_meta(const char *meta_path, NameTable *nt)
 {
-	FILE *f = fopen(json_path, "r");
-	if (!f) {
-		perror(json_path);
+	VizemesModelMeta meta;
+	if (vizemes_meta_load(meta_path, &meta) != 0) {
 		return -1;
 	}
-	char *buf = NULL;
-	size_t cap = 0;
-	size_t n = 0;
-	int c;
-	while ((c = fgetc(f)) != EOF) {
-		if (n + 1 >= cap) {
-			cap = cap ? cap * 2 : 4096;
-			char *nb = (char *)realloc(buf, cap);
-			if (!nb) {
-				free(buf);
-				fclose(f);
-				return -1;
-			}
-			buf = nb;
-		}
-		buf[n++] = (char)c;
+	memset(nt, 0, sizeof(*nt));
+	nt->n = meta.n_visemes;
+	for (int i = 0; i < meta.n_visemes && i < MAX_VISEMES; i++) {
+		snprintf(nt->names[i], sizeof(nt->names[i]), "%s", meta.viseme_names[i]);
 	}
-	fclose(f);
-	if (!buf) {
-		return -1;
-	}
-	buf[n] = '\0';
-
-	nt->n = 0;
-	/* Parse "visemes": { "name": id, ... } — tiny sidecar, not a full JSON parser. */
-	const char *vis = strstr(buf, "\"visemes\"");
-	if (!vis) {
-		free(buf);
-		return -1;
-	}
-	const char *brace = strchr(vis, '{');
-	if (!brace) {
-		free(buf);
-		return -1;
-	}
-	const char *p = brace + 1;
-	while (*p && *p != '}' && nt->n < MAX_VISEMES) {
-		while (*p && (isspace((unsigned char)*p) || *p == ',')) {
-			p++;
-		}
-		if (*p == '}') {
-			break;
-		}
-		if (*p != '"') {
-			free(buf);
-			return -1;
-		}
-		p++;
-		const char *name_start = p;
-		while (*p && *p != '"') {
-			p++;
-		}
-		if (!*p) {
-			free(buf);
-			return -1;
-		}
-		size_t namelen = (size_t)(p - name_start);
-		if (namelen >= sizeof(nt->names[0])) {
-			namelen = sizeof(nt->names[0]) - 1;
-		}
-		memcpy(nt->names[nt->n], name_start, namelen);
-		nt->names[nt->n][namelen] = '\0';
-		p++; /* closing quote */
-		while (*p && (isspace((unsigned char)*p) || *p == ':')) {
-			p++;
-		}
-		int id = (int)strtol(p, (char **)&p, 10);
-		if (id < 0 || id >= MAX_VISEMES) {
-			free(buf);
-			return -1;
-		}
-		char tmp[32];
-		memcpy(tmp, name_start, namelen);
-		tmp[namelen] = '\0';
-		memcpy(nt->names[id], tmp, sizeof(tmp));
-		if (id + 1 > nt->n) {
-			nt->n = id + 1;
-		}
-		while (*p && *p != ',' && *p != '}') {
-			p++;
-		}
-	}
-	free(buf);
 	return nt->n > 0 ? 0 : -1;
 }
 
@@ -140,21 +61,21 @@ static int split_csv_line(char *line, char **fields, int max_fields)
 int main(int argc, char **argv)
 {
 	if (argc < 4) {
-		fprintf(stderr, "usage: %s model.json model.onnx demo_inputs.csv\n", argv[0]);
+		fprintf(stderr, "usage: %s model.meta model.onnx demo_inputs.csv\n", argv[0]);
 		return 2;
 	}
-	const char *json_path = argv[1];
+	const char *meta_path = argv[1];
 	const char *onnx_path = argv[2];
 	const char *csv_path = argv[3];
 
 	NameTable names;
-	if (load_names_from_json(json_path, &names) != 0) {
-		fprintf(stderr, "failed to parse visemes from %s\n", json_path);
+	if (load_names_from_meta(meta_path, &names) != 0) {
+		fprintf(stderr, "failed to load visemes from %s\n", meta_path);
 		return 1;
 	}
 
 	VizemesRuntime *rt =
-		vizemes_runtime_create(json_path, onnx_path, vizemes_frontend_mel());
+		vizemes_runtime_create(meta_path, onnx_path, vizemes_frontend_mel());
 	if (!rt) {
 		fprintf(stderr, "vizemes_runtime_create failed\n");
 		return 1;
@@ -163,7 +84,7 @@ int main(int argc, char **argv)
 	int nfeat = vizemes_runtime_input_features(rt);
 	int nv = vizemes_runtime_n_visemes(rt);
 	if (nv > names.n) {
-		fprintf(stderr, "runtime n_visemes=%d > json names=%d\n", nv, names.n);
+		fprintf(stderr, "runtime n_visemes=%d > meta names=%d\n", nv, names.n);
 		vizemes_runtime_destroy(rt);
 		return 1;
 	}
