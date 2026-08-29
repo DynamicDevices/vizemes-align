@@ -337,8 +337,8 @@ func _infer_from_pcm() -> int:
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if mel == null or loader == null:
 		return 1
-	if not mel.configure_from_json(json_path):
-		push_error("MelFrontend configure_from_json failed for record infer")
+	if not VisemeUtils.configure_mel_from_json(mel, json_path):
+		push_error("MelFrontend configure failed for record infer")
 		return 1
 	if not loader.load_model(onnx_path):
 		return 1
@@ -405,7 +405,7 @@ func _load_and_run() -> int:
 		_status = "MelFrontend missing"
 		push_error(_status)
 		return 1
-	if not mel.configure_from_json(json_path):
+	if not VisemeUtils.configure_mel_from_json(mel, json_path):
 		_status = "MelFrontend configure failed"
 		push_error(_status)
 		return 1

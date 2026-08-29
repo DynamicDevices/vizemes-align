@@ -153,6 +153,33 @@ static func load_id_to_name(json_path: String) -> Array:
 	return names
 
 
+## Parse model.json in GDScript (res:// or absolute) and call MelFrontend.configure(...).
+static func configure_mel_from_json(mel: Object, json_path: String) -> bool:
+	if mel == null:
+		return false
+	var f := FileAccess.open(json_path, FileAccess.READ)
+	if f == null:
+		push_error("configure_mel_from_json: open failed %s" % json_path)
+		return false
+	var data: Variant = JSON.parse_string(f.get_as_text())
+	if typeof(data) != TYPE_DICTIONARY:
+		push_error("configure_mel_from_json: bad JSON %s" % json_path)
+		return false
+	var audio: Dictionary = data.get("audio", {})
+	var ctx := int(data.get("context_frames", 20))
+	var n_mels := int(audio.get("n_mels", data.get("n_mels", 80)))
+	var sr := int(audio.get("sample_rate", 16000))
+	var hop := int(audio.get("hop_length_samples", 160))
+	var win := int(audio.get("window_length_samples", 400))
+	var n_fft := int(audio.get("n_fft", 1024))
+	var fmin := float(audio.get("fmin", 50.0))
+	var fmax := float(audio.get("fmax", 8000.0))
+	var visemes: Variant = data.get("visemes", {})
+	var n_vis := int(data.get("n_visemes", visemes.size() if visemes is Dictionary else 15))
+	var feats := int(data.get("input_features", ctx * n_mels))
+	return mel.configure(ctx, n_mels, sr, hop, win, n_fft, fmin, fmax, n_vis, feats)
+
+
 static func mlp_to_ovr(weights: PackedFloat32Array, id_to_name: Array) -> PackedFloat32Array:
 	var ovr := PackedFloat32Array()
 	ovr.resize(OVR_NAMES.size())

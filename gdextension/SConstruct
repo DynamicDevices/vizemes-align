@@ -49,7 +49,7 @@ env_cpp.Append(LIBS=[mel_lib, "m"])
 libname = "vizemes_mel"
 if env_cpp["platform"] == "macos":
     library = env_cpp.SharedLibrary(
-        "godot/bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
+        "../addons/vizemes_mel/bin/lib{}.{}.{}.framework/lib{}.{}.{}".format(
             libname,
             env_cpp["platform"],
             env_cpp["target"],
@@ -61,7 +61,7 @@ if env_cpp["platform"] == "macos":
     )
 else:
     library = env_cpp.SharedLibrary(
-        "godot/bin/lib{}{}{}".format(libname, env_cpp["suffix"], env_cpp["SHLIBSUFFIX"]),
+        "../addons/vizemes_mel/bin/lib{}{}{}".format(libname, env_cpp["suffix"], env_cpp["SHLIBSUFFIX"]),
         source=godot_sources,
     )
 
