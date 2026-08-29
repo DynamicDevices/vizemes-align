@@ -1,0 +1,6 @@
+; Engine configuration for gpm consumer spike (Godot 4.6+).
+config_version=5
+
+[application]
+config/name="gpm-consumer spike"
+config/features=PackedStringArray("4.6")

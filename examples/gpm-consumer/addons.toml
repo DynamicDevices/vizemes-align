@@ -1,0 +1,19 @@
+[addons]
+  [addons.onnx_loader]
+    source = "github-release"
+    repo = "DynamicDevices/godot-onnx-loader"
+    version = "v0.2.1"
+    asset = "godot-onnx-loader-v0.2.1-linux-x86_64.zip"
+    source_path = "addons/onnx_loader"
+  [addons.speexdsp]
+    source = "github-release"
+    repo = "DynamicDevices/godot-speexdsp"
+    version = "v0.1.0"
+    asset = "godot-speexdsp-v0.1.0-linux-x86_64.zip"
+    source_path = "addons/speexdsp"
+  [addons.vizemes_mel]
+    source = "github-release"
+    repo = "DynamicDevices/vizemes-align"
+    version = "v0.1.0-mel-addon"
+    asset = "vizemes-mel-v0.1.0-linux-x86_64.zip"
+    source_path = "addons/vizemes_mel"

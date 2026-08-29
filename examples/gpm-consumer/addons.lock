@@ -1,0 +1,16 @@
+[addons]
+  [addons.onnx_loader]
+    resolved_version = "v0.2.1"
+    source_path = "addons/onnx_loader"
+    checksum = "a024d04fa66f07a62767f3b05bc0a1f8f39485d4c2f89176c8094a1b83102fde"
+    spec_hash = "2e3e6e43632ea0ce036997ef7bd407c6d8abb77d244e39f6a9c043ec79f81588"
+  [addons.speexdsp]
+    resolved_version = "v0.1.0"
+    source_path = "addons/speexdsp"
+    checksum = "9b877da138ecef8330910feb7568c3fcefb634701d6c278aaecd65dec4d5c0fd"
+    spec_hash = "edd46f33367a17e61008ea42e5db0251d83d8502e2951d377eabc0ccecc6fb16"
+  [addons.vizemes_mel]
+    resolved_version = "v0.1.0-mel-addon"
+    source_path = "addons/vizemes_mel"
+    checksum = "aefddafc429bb22ca7641322ed971e2f8036794501604ac46793d7bbda00eddf"
+    spec_hash = "e1999c20fefb4b25395c6f28c7960de274485734274adeb774cc10043ee86562"
