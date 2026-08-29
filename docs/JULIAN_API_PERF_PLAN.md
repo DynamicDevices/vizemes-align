@@ -111,13 +111,22 @@ Measure **both** plugins under the same harness:
 
 | Metric | How |
 |--------|-----|
-| CPU | host C smoke + Godot headless loop; `perf stat` / `clock_gettime` around mel hop + `OnnxLoader.predict` |
-| Memory | RSS before/after load; ORT arena if exposed; context buffer high-water |
-| Realtime factor | contexts/s vs realtime hops (100 Hz @ 10 ms) |
-
-Deliverable: `docs/` table + CI job or `gdextension/tools/` script that prints `MEL_CPU_US`, `ORT_CPU_US`, `RSS_KB` tokens.
+| CPU | `python3 gdextension/tools/bench_plugins.py` → `MEL_CPU_US` / `ORT_CPU_US` |
+| Memory | `RSS_KB` from same script |
+| Realtime factor | `ORT_RT_FACTOR` vs 10 ms hop budget |
 
 Improve only after numbers exist (no blind “make faster”).
+
+### Train tier B quote (2026-08-29)
+
+| Item | Estimate |
+|------|----------|
+| Data | `data/aligned/test-clean` ≈ **2620** TextGrids; prepared audio ~610 MB |
+| Model | hidden **128–256**, context **20**, 40–80 epochs |
+| Host | Alex Nix self-hosted / Alien GPU |
+| Wall-clock (CPU) | **30–120 min** typical for tier B; GPU **5–20 min** if CUDA torch |
+| Peak RAM | **4–12 GB** tensors+torch (subset if OOM) |
+| Gate | Do **not** start until Alex confirms budget; log val accuracy vs MFA boxes |
 
 ---
 

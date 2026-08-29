@@ -32,6 +32,12 @@ jobs:
       - name: GDScript mini/maxi float footgun lint
         run: python scripts/check_gdscript_int_math.py godot-demo
 
+      - name: plugin CPU/RSS bench (ORT)
+        run: |
+          pip install -q onnxruntime
+          python3 gdextension/tools/bench_plugins.py | tee /tmp/vizemes-bench.txt
+          grep -q BENCH_OK /tmp/vizemes-bench.txt
+
       - name: resolve_micromamba rejects missing
         run: |
           set +e

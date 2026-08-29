@@ -1,3 +1,4 @@
+#include "MelAudioEffect.hpp"
 #include "MelFrontend.hpp"
 
 #include <gdextension_interface.h>
@@ -13,6 +14,8 @@ void initialize_vizemes_mel_module(ModuleInitializationLevel p_level)
 		return;
 	}
 	ClassDB::register_class<MelFrontend>();
+	ClassDB::register_class<MelAudioEffectInstance>();
+	ClassDB::register_class<MelAudioEffect>();
 }
 
 void uninitialize_vizemes_mel_module(ModuleInitializationLevel p_level)

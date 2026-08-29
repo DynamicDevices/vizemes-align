@@ -9,6 +9,7 @@
 #include <cmath>
 #include <cstring>
 #include <cstdlib>
+#include <mutex>
 
 MelFrontend::MelFrontend()
 {
@@ -105,6 +106,7 @@ void MelFrontend::reset()
 
 void MelFrontend::begin_stream()
 {
+	std::lock_guard<std::mutex> lock(stream_mu);
 	if (!configured) {
 		return;
 	}
@@ -192,6 +194,7 @@ Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t 
 
 void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
 {
+	std::lock_guard<std::mutex> lock(stream_mu);
 	if (!configured) {
 		return;
 	}
@@ -258,11 +261,13 @@ void MelFrontend::push_pcm_stereo(const PackedVector2Array &frames, int mix_rate
 
 int MelFrontend::count_available_contexts() const
 {
+	std::lock_guard<std::mutex> lock(stream_mu);
 	return (int)context_queue.size();
 }
 
 PackedFloat32Array MelFrontend::get_next_context()
 {
+	std::lock_guard<std::mutex> lock(stream_mu);
 	if (context_queue.empty()) {
 		return PackedFloat32Array();
 	}
@@ -273,6 +278,7 @@ PackedFloat32Array MelFrontend::get_next_context()
 
 float MelFrontend::last_context_time_offset() const
 {
+	std::lock_guard<std::mutex> lock(stream_mu);
 	if (!configured || cfg.sample_rate <= 0 || cfg.hop_length_samples <= 0) {
 		return 0.f;
 	}

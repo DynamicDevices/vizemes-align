@@ -7,6 +7,7 @@
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 
+#include <mutex>
 #include <vector>
 
 using namespace godot;
@@ -28,6 +29,7 @@ class MelFrontend : public RefCounted {
 	size_t stream_pcm_cap = 0;
 	size_t stream_contexts_emitted = 0;
 	std::vector<PackedFloat32Array> context_queue;
+	mutable std::mutex stream_mu;
 
 	void clear_stream();
 	bool apply_config();

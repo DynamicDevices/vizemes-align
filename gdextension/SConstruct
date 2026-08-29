@@ -32,6 +32,7 @@ mel_lib = env_c.StaticLibrary("build/libvizemes_mel_c", mel_c)
 
 godot_sources = [
     "src/MelFrontend.cpp",
+    "src/MelAudioEffect.cpp",
     "src/register_types.cpp",
 ]
 
