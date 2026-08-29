@@ -53,9 +53,28 @@ func _ready() -> void:
 		push_error("streaming/batch context count mismatch %d vs %d" % [stream_ctx.size(), batch_ctx.size()])
 		get_tree().quit(1)
 		return
+
+	# Live mix_rate change: MelFrontend should speex_resampler_set_rate, not tear down.
+	var stereo := PackedVector2Array()
+	stereo.resize(480)
+	for i in 480:
+		var a := 0.1 * sin(TAU * 440.0 * float(i) / 48000.0)
+		stereo[i] = Vector2(a, a)
+	mel.begin_stream()
+	mel.push_pcm_stereo(stereo, 48000)
+	mel.push_pcm_stereo(stereo, 44100)  # rate change → set_rate path
+	var after_rate: int = mel.count_available_contexts()
+	# VisemeUtils SpeexResampler.set_rate reuse
+	var r1: PackedFloat32Array = VisemeUtils.resample_pcm(pcm.slice(0, 480), 16000, 8000)
+	var r2: PackedFloat32Array = VisemeUtils.resample_pcm(pcm.slice(0, 480), 16000, 12000)
+	if r1.is_empty() or r2.is_empty() or r2.size() <= r1.size():
+		push_error("VisemeUtils.set_rate resample check failed")
+		get_tree().quit(1)
+		return
+
 	print(
-		"streaming_contexts=%d batch_contexts=%d logits=%d" % [
-			stream_ctx.size(), batch_ctx.size(), logits.size()
+		"streaming_contexts=%d batch_contexts=%d logits=%d rate_change_ctx=%d" % [
+			stream_ctx.size(), batch_ctx.size(), logits.size(), after_rate
 		]
 	)
 	print("GODOT_STREAMING_SMOKE_OK")

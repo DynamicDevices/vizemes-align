@@ -42,16 +42,31 @@ static func stereo_to_mono(buffer: PackedVector2Array) -> PackedFloat32Array:
 	return pcm
 
 
+static var _speex_rs = null
+static var _speex_in_rate: int = 0
+static var _speex_out_rate: int = 0
+
+
 static func resample_pcm(pcm: PackedFloat32Array, from_rate: int, to_rate: int) -> PackedFloat32Array:
 	if from_rate <= 0 or to_rate <= 0 or pcm.is_empty():
 		return PackedFloat32Array()
 	if from_rate == to_rate:
 		return pcm
 	# Prefer SpeexDSP GDExtension when present (DynamicDevices/godot-speexdsp).
+	# Reuse one SpeexResampler and set_rate() when rates change (live mic).
 	if ClassDB.class_exists("SpeexResampler"):
-		var rs = ClassDB.instantiate("SpeexResampler")
-		if rs.setup(1, from_rate, to_rate, 5) == OK:
-			return rs.process(pcm)
+		if _speex_rs == null:
+			_speex_rs = ClassDB.instantiate("SpeexResampler")
+			if _speex_rs.setup(1, from_rate, to_rate, 5) != OK:
+				_speex_rs = null
+		elif _speex_in_rate != from_rate or _speex_out_rate != to_rate:
+			if _speex_rs.set_rate(from_rate, to_rate) != OK:
+				if _speex_rs.setup(1, from_rate, to_rate, 5) != OK:
+					_speex_rs = null
+		if _speex_rs != null:
+			_speex_in_rate = from_rate
+			_speex_out_rate = to_rate
+			return _speex_rs.process(pcm)
 	var out_len := maxi(1, int(round(float(pcm.size()) * float(to_rate) / float(from_rate))))
 	var out := PackedFloat32Array()
 	out.resize(out_len)

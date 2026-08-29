@@ -55,7 +55,18 @@ bool MelFrontend::ensure_resampler(int from_rate)
 	if (resampler && resampler_in_rate == from_rate) {
 		return true;
 	}
-	destroy_resampler();
+	if (resampler) {
+		/* Live mic mix_rate can change (device switch) — adapt without teardown. */
+		int err = speex_resampler_set_rate(resampler, (spx_uint32_t)from_rate,
+				(spx_uint32_t)cfg.sample_rate);
+		if (err == RESAMPLER_ERR_SUCCESS) {
+			resampler_in_rate = from_rate;
+			return true;
+		}
+		UtilityFunctions::push_warning(
+				"MelFrontend: speex_resampler_set_rate failed; recreating resampler");
+		destroy_resampler();
+	}
 	int err = 0;
 	resampler = speex_resampler_init(1, (spx_uint32_t)from_rate, (spx_uint32_t)cfg.sample_rate, 5, &err);
 	if (!resampler || err != RESAMPLER_ERR_SUCCESS) {
