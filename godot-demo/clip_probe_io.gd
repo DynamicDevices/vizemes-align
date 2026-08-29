@@ -46,11 +46,41 @@ static func export_seek_probe(stem: String, seeks: int = 8, subset: String = DEF
 
 
 static func export_viseme_timeline(stem: String, subset: String = DEFAULT_SUBSET) -> Dictionary:
+	var root := repo_root()
+	var out := root.path_join("export/ci-smoke/viseme_timeline.json")
 	var args := PackedStringArray([
 		"--subset", subset,
 		"--stem", stem,
-		"--out", repo_root().path_join("export/ci-smoke/viseme_timeline.json"),
+		"--out", out,
 	])
+	# Prefer VISEMES_MODEL_DIR, else auto-use export/tier-b when staged.
+	var model_dir := OS.get_environment("VISEMES_MODEL_DIR")
+	if model_dir.is_empty():
+		var tier := root.path_join("export/tier-b")
+		if FileAccess.file_exists(tier.path_join("model.onnx")) and FileAccess.file_exists(
+			tier.path_join("model.json")
+		):
+			model_dir = "export/tier-b"
+	if not model_dir.is_empty():
+		var abs_dir := model_dir if model_dir.is_absolute_path() else root.path_join(model_dir)
+		var onnx := abs_dir.path_join("model.onnx")
+		var meta := abs_dir.path_join("model.json")
+		var onnx_b := abs_dir.path_join("model_10m.onnx")
+		if FileAccess.file_exists(onnx):
+			args.append_array(PackedStringArray(["--onnx", onnx]))
+		if FileAccess.file_exists(meta):
+			args.append_array(PackedStringArray(["--model-json", meta]))
+		if FileAccess.file_exists(onnx_b):
+			args.append_array(PackedStringArray([
+				"--onnx-b", onnx_b,
+				"--label-a", "A:tier-b-final",
+				"--label-b", "B:tier-b-10m",
+			]))
+		out = abs_dir.path_join("viseme_timeline.json")
+		for i in args.size():
+			if args[i] == "--out" and i + 1 < args.size():
+				args[i + 1] = out
+				break
 	return run_python("scripts/export_viseme_timeline.py", args)
 
 

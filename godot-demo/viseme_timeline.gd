@@ -321,15 +321,28 @@ func _finish_recording() -> void:
 	grab_focus()
 
 
+func _default_model_paths() -> Dictionary:
+	## Prefer tier-B when present; fall back to ci-smoke.
+	var root := _repo_root()
+	var tier_onnx := root.path_join("export/tier-b/model.onnx")
+	var tier_json := root.path_join("export/tier-b/model.json")
+	if FileAccess.file_exists(tier_onnx) and FileAccess.file_exists(tier_json):
+		return {"onnx": tier_onnx, "json": tier_json}
+	return {
+		"onnx": root.path_join("export/ci-smoke/model.onnx"),
+		"json": root.path_join("export/ci-smoke/model.json"),
+	}
+
+
 func _infer_from_pcm() -> int:
 	## Live/mic preview only: MelFrontend + ONNX → soft series + hard bytes.
 	## Does NOT run MFA / export_viseme_timeline (train-set alignment stays on Load).
 	if not ClassDB.class_exists("MelFrontend") or not ClassDB.class_exists("OnnxLoader"):
 		push_error("need MelFrontend + OnnxLoader")
 		return 1
-	var root := _repo_root()
-	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
-	var json_path := root.path_join("export/ci-smoke/model.json")
+	var paths := _default_model_paths()
+	var onnx_path: String = paths["onnx"]
+	var json_path: String = paths["json"]
 	if not FileAccess.file_exists(onnx_path) or not FileAccess.file_exists(json_path):
 		return 1
 	_names = VisemeUtils.load_id_to_name(json_path)
@@ -370,9 +383,20 @@ func _setup_audio() -> void:
 	add_child(_player)
 
 
+func _timeline_probe_path() -> String:
+	var root := _repo_root()
+	var env := OS.get_environment("VISEMES_TIMELINE_JSON")
+	if not env.is_empty():
+		return env if env.is_absolute_path() else root.path_join(env)
+	var tier := root.path_join("export/tier-b/viseme_timeline.json")
+	if FileAccess.file_exists(tier):
+		return tier
+	return root.path_join("export/ci-smoke/viseme_timeline.json")
+
+
 func _load_and_run() -> int:
 	var root := _repo_root()
-	var path := root.path_join("export/ci-smoke/viseme_timeline.json")
+	var path := _timeline_probe_path()
 	if not FileAccess.file_exists(path):
 		_status = "missing viseme_timeline.json — run: python3 scripts/export_viseme_timeline.py"
 		push_error(_status)

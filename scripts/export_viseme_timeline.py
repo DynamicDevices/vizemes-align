@@ -71,6 +71,20 @@ def main() -> int:
         default=ROOT / "export" / "ci-smoke" / "model.json",
     )
     ap.add_argument(
+        "--onnx",
+        type=Path,
+        default=None,
+        help="Primary ONNX path (default: export/ci-smoke/model.onnx)",
+    )
+    ap.add_argument(
+        "--onnx-b",
+        type=Path,
+        default=None,
+        help="Optional second ONNX for timeline A/B overlay",
+    )
+    ap.add_argument("--label-a", default="", help="Timeline UI label for primary model")
+    ap.add_argument("--label-b", default="", help="Timeline UI label for onnx_b")
+    ap.add_argument(
         "--viseme-map",
         type=Path,
         default=ROOT / "configs" / "viseme_map_en_us_arpa.json",
@@ -128,15 +142,44 @@ def main() -> int:
 
     names = [id_to_name[i] for i in range(len(id_to_name))]
 
+    def _rel(p: Path) -> str:
+        try:
+            return str(p.resolve().relative_to(ROOT))
+        except ValueError:
+            return str(p)
+
+    onnx_primary = args.onnx or (ROOT / "export" / "ci-smoke" / "model.onnx")
+    onnx_b = args.onnx_b
+    if onnx_b is None:
+        cand = ROOT / "export" / "ci-smoke" / "model_b.onnx"
+        onnx_b = cand if cand.is_file() else None
+
+    label_a = args.label_a or "A"
+    label_b = args.label_b or "B"
+    if not args.label_a and "ci-smoke" in _rel(onnx_primary):
+        label_a = "A:ci-smoke"
+    if not args.label_a and "tier-b" in _rel(onnx_primary):
+        label_a = "A:tier-b"
+    if onnx_b is not None and not args.label_b:
+        rb = _rel(onnx_b)
+        if "model_10m" in rb:
+            label_b = "B:tier-b-10m"
+        elif "model_20m" in rb:
+            label_b = "B:tier-b-20m"
+        elif "tier-b" in rb:
+            label_b = "B:tier-b"
+        elif "model_b" in rb:
+            label_b = "B:hidden16"
+
     out = {
         "subset": args.subset,
         "stem": stem,
         "wav": wav_rel,
-        "model_json": "export/ci-smoke/model.json",
-        "onnx": "export/ci-smoke/model.onnx",
-        "onnx_b": "",
-        "label_a": "A:hidden64",
-        "label_b": "B",
+        "model_json": _rel(args.model_json),
+        "onnx": _rel(onnx_primary),
+        "onnx_b": _rel(onnx_b) if onnx_b is not None else "",
+        "label_a": label_a,
+        "label_b": label_b,
         "context_frames": int(meta["context_frames"]),
         "hop_s": hop,
         "duration_s": round(duration_s, 4),
@@ -151,15 +194,11 @@ def main() -> int:
             "Optional onnx_b overlays a second model (toggle A/B/D in editor)."
         ),
     }
-    # Prefer a thinner sibling model when present (timeline A/B).
-    model_b = ROOT / "export" / "ci-smoke" / "model_b.onnx"
-    if model_b.is_file():
-        out["onnx_b"] = "export/ci-smoke/model_b.onnx"
-        out["label_b"] = "B:hidden16"
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(
-        f"wrote {args.out} stem={stem} duration={duration_s:.2f}s boxes={len(boxes)}"
+        f"wrote {args.out} stem={stem} duration={duration_s:.2f}s boxes={len(boxes)} "
+        f"onnx={out['onnx']} onnx_b={out['onnx_b'] or '-'}"
     )
     return 0
 
