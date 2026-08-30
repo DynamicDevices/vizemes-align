@@ -6,6 +6,7 @@ extends Control
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const PULL_MAX := 4096
 
 @onready var _label: Label = %Label
@@ -29,21 +30,19 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
 	_pipe = VisemePipelineScript.new()
-	var model_dir: String = ClipProbeIo.resolve_model_dir()
-	var onnx_path := model_dir.path_join("model.onnx")
-	if not FileAccess.file_exists(onnx_path):
-		onnx_path = model_dir.path_join("model_final.onnx")
-	var json_path := model_dir.path_join("model.json")
-	if not FileAccess.file_exists(json_path):
-		json_path = model_dir.path_join("model_final.json")
-	if not FileAccess.file_exists(json_path):
-		json_path = root.path_join("export/ci-smoke/model.json")
-	if not _pipe.setup(json_path, onnx_path):
-		push_error("mic_lipsync: setup failed for %s + %s" % [json_path, onnx_path])
+	var paths: Dictionary = ClipProbeIo.resolve_model_paths(false)
+	var onnx_path := str(paths.get("onnx", ""))
+	var json_path := str(paths.get("json", ""))
+	if onnx_path.is_empty():
+		push_error("mic_lipsync: no ONNX under res://addons/vizeme-onnxmodels — run scripts/sync_vizeme_onnxmodels.sh")
 		get_tree().quit(1)
 		return
+	if not _pipe.setup(json_path, onnx_path):
+		push_error("mic_lipsync: setup failed for %s (+ json %s)" % [onnx_path, json_path])
+		get_tree().quit(1)
+		return
+	_label.text = "Listening… model=%s via %s" % [paths.get("id", "?"), onnx_path.get_file()]
 	_target = VisemeTarget.resolve(self)
 	if _target == null:
 		get_tree().quit(1)

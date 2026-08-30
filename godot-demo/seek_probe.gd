@@ -160,16 +160,29 @@ func _mel_l2(a: PackedFloat32Array, b: Array) -> float:
 
 
 func _run_probe() -> int:
-	var root := ClipProbeIo.repo_root()
-	var probe_path := OS.get_environment("SEEK_PROBE_JSON").strip_edges()
-	if probe_path.is_empty():
-		probe_path = root.path_join("export/ci-smoke/seek_probe.json")
-	if not FileAccess.file_exists(probe_path):
-		_set_status("missing seek_probe.json — Load a stem or run export_seek_probe.py")
+	## Prefer res:// paths so FileAccess works without abs-path footguns.
+	var probe_res := OS.get_environment("SEEK_PROBE_JSON").strip_edges()
+	if probe_res.is_empty():
+		for cand in [
+			"res://addons/vizeme-onnxmodels/ci-smoke/seek_probe.json",
+			"res://addons/vizeme-onnxmodels/ci-smoke/seek_probe_ci_fixture.json",
+		]:
+			if FileAccess.file_exists(cand):
+				probe_res = cand
+				break
+	elif not probe_res.begins_with("res://") and not probe_res.begins_with("user://"):
+		## Absolute/env override: prefer in-project; allow existing host path for CI/dev.
+		var abs_p := probe_res if probe_res.is_absolute_path() else ClipProbeIo.project_abs().path_join(probe_res)
+		if FileAccess.file_exists(abs_p):
+			probe_res = abs_p
+		else:
+			probe_res = ""
+	if probe_res.is_empty() or not FileAccess.file_exists(probe_res):
+		_set_status("missing seek_probe.json under res://addons/vizeme-onnxmodels — Load a stem or sync")
 		push_error(_status.text)
 		return 1
 
-	var f := FileAccess.open(probe_path, FileAccess.READ)
+	var f := FileAccess.open(probe_res, FileAccess.READ)
 	var probe: Variant = JSON.parse_string(f.get_as_text())
 	if typeof(probe) != TYPE_DICTIONARY:
 		_set_status("bad seek_probe.json")
@@ -179,9 +192,10 @@ func _run_probe() -> int:
 	_last_probe = probe
 	_stem_edit.text = str(probe.get("stem", ClipProbeIo.DEFAULT_STEM))
 
-	var json_path := root.path_join(str(probe.get("model_json", "export/ci-smoke/model.json")))
-	var onnx_path := root.path_join(str(probe.get("onnx", "export/ci-smoke/model.onnx")))
-	var wav_path := root.path_join(str(probe["wav"]))
+	var model_paths := ClipProbeIo.resolve_ci_smoke_paths()
+	var json_path := str(model_paths.get("json", ""))
+	var onnx_path := str(model_paths.get("onnx", ""))
+	var wav_path := ClipProbeIo.resolve_wav_for_probe(probe)
 	var mel_l2_max := float(probe.get("mel_l2_max", 0.05))
 	var seeks: Array = probe.get("seeks", [])
 

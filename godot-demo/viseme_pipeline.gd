@@ -13,24 +13,36 @@ var last_ovr: PackedFloat32Array = PackedFloat32Array()
 
 
 func setup(json_path: String, onnx_path: String) -> bool:
-	id_to_name = VisemeUtils.load_id_to_name(json_path)
-	if id_to_name.is_empty():
-		push_error("VisemePipeline: model.json visemes missing")
-		return false
+	## Prefer ONNX embedded metadata; optional JSON fallback for older packs.
 	mel = ClassDB.instantiate("MelFrontend")
 	loader = ClassDB.instantiate("OnnxLoader")
 	if mel == null or loader == null:
 		push_error("VisemePipeline: GDExtensions missing")
 		return false
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
+	if onnx_path.is_empty() or not FileAccess.file_exists(onnx_path):
+		push_error("VisemePipeline: missing onnx %s" % onnx_path)
 		return false
 	if not loader.load_model(onnx_path):
+		push_error("VisemePipeline: load_model failed %s" % onnx_path)
+		return false
+	id_to_name = VisemeUtils.load_id_to_name_from_onnx(loader)
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+		push_error("VisemePipeline: MelFrontend configure failed")
+		return false
+	if id_to_name.is_empty() and not json_path.is_empty():
+		id_to_name = VisemeUtils.load_id_to_name(json_path)
+	if id_to_name.is_empty():
+		push_error("VisemePipeline: no viseme names in ONNX metadata or JSON")
 		return false
 	target_rate = int(mel.get_sample_rate()) if mel.get_sample_rate() > 0 else 16000
 	# SpeexDSP AGC + VAD + denoise on mic path (gate off by default — still emit silence contexts).
 	if mel.has_method("configure_preprocess"):
 		mel.configure_preprocess(true, true, true, 8000.0, false, 10)
 	return true
+
+
+func setup_onnx(onnx_path: String) -> bool:
+	return setup("", onnx_path)
 
 
 func set_vad_gate(enabled: bool) -> void:

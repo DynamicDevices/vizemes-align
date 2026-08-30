@@ -3,6 +3,7 @@ extends Node
 ## Shout into the mic; printed RMS / peak of each context should move.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 var _mel: Object
 var _frames := 0
@@ -17,22 +18,25 @@ func _ready() -> void:
 		push_error("mic failed: %s" % error_string(err))
 		return
 
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	# Prefer res:// copy when present; fall back to repo export path.
-	var json_res := "res://model.json"
-	var json_path := json_res if FileAccess.file_exists(json_res) else root.path_join("export/ci-smoke/model.json")
+	var paths := ClipProbeIo.resolve_model_paths(false)
+	var onnx_path := str(paths.get("onnx", ""))
+	var json_path := str(paths.get("json", ""))
 
 	_mel = ClassDB.instantiate("MelFrontend")
 	if _mel == null:
 		push_error("MelFrontend missing")
 		return
-	if not VisemeUtils.configure_mel_from_json(_mel, json_path):
-		push_error("configure failed: %s" % json_path)
+	var loader = ClassDB.instantiate("OnnxLoader")
+	if loader == null or onnx_path.is_empty() or not loader.load_model(onnx_path):
+		push_error("OnnxLoader / model missing under res://addons/vizeme-onnxmodels")
+		return
+	if not VisemeUtils.configure_mel_from_onnx(_mel, loader, json_path):
+		push_error("configure failed: %s" % onnx_path)
 		return
 	if _mel.has_method("configure_preprocess"):
 		_mel.configure_preprocess(true, true, true, 8000.0, false, 10)
 	_mel.begin_stream()
-	print("mic_context_print ready — shout; contexts print as produced (%s)" % json_path)
+	print("mic_context_print ready — shout; contexts print as produced (%s)" % onnx_path)
 
 
 func _process(_dt: float) -> void:

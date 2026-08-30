@@ -2,6 +2,7 @@ extends Node
 ## MelFrontend + OnnxLoader: ci-fixture.wav → mel → logits; hit-rate vs demo_inputs.csv.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const MATCH_L2 := 0.01
 
 
@@ -43,29 +44,27 @@ func _run_hit_rate(loader: Object, contexts: Array, csv_path: String, nfeat: int
 
 
 func _ready() -> void:
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	var json_path := root.path_join("export/ci-smoke/model.json")
-	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
-	var wav_path := root.path_join("export/ci-smoke/ci-fixture.wav")
-	var csv_path := root.path_join("export/ci-smoke/demo_inputs.csv")
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
+	var json_path := str(paths.get("json", ""))
+	var onnx_path := str(paths.get("onnx", ""))
+	var pack := str(paths.get("dir", ClipProbeIo.models_abs().path_join("ci-smoke")))
+	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
+	var csv_path := pack.path_join("demo_inputs.csv")
+	if not FileAccess.file_exists(csv_path):
+		csv_path = ClipProbeIo.models_abs().path_join("ci-smoke/demo_inputs.csv")
 
 	var mel = ClassDB.instantiate("MelFrontend")
 	if mel == null:
 		push_error("MelFrontend missing — build gdextension .so")
 		get_tree().quit(1)
 		return
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
-		push_error("MelFrontend configure failed: %s" % json_path)
-		get_tree().quit(1)
-		return
-
 	var loader = ClassDB.instantiate("OnnxLoader")
-	if loader == null:
-		push_error("OnnxLoader missing — build onnx_loader addon")
+	if loader == null or not loader.load_model(onnx_path):
+		push_error("OnnxLoader load failed: %s" % onnx_path)
 		get_tree().quit(1)
 		return
-	if not loader.load_model(onnx_path):
-		push_error("OnnxLoader load_model failed: %s" % onnx_path)
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+		push_error("MelFrontend configure failed: %s" % onnx_path)
 		get_tree().quit(1)
 		return
 

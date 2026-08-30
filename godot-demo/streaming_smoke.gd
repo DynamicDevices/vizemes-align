@@ -2,14 +2,15 @@ extends Node
 ## Chunked PCM → push_pcm / get_next_context (live mic shape) → ONNX.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const CHUNK_SAMPLES := 1600
 
 
 func _ready() -> void:
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	var json_path := root.path_join("export/ci-smoke/model.json")
-	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
-	var wav_path := root.path_join("export/ci-smoke/ci-fixture.wav")
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
+	var json_path := str(paths.get("json", ""))
+	var onnx_path := str(paths.get("onnx", ""))
+	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
 
 	var mel = ClassDB.instantiate("MelFrontend")
 	var loader = ClassDB.instantiate("OnnxLoader")
@@ -17,7 +18,8 @@ func _ready() -> void:
 		push_error("MelFrontend or OnnxLoader missing")
 		get_tree().quit(1)
 		return
-	if not VisemeUtils.configure_mel_from_json(mel, json_path) or not loader.load_model(onnx_path):
+	if not loader.load_model(onnx_path) \
+			or not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
 		get_tree().quit(1)
 		return
 
