@@ -538,10 +538,49 @@ func _finish_recording() -> void:
 
 func _default_model_paths() -> Dictionary:
 	## Models only from res://addons/vizeme-onnxmodels (Julian 944).
+	## Prefer TCN for timeline quality; callers must fall back if load fails.
 	var paths := ClipProbeIo.resolve_model_paths(true)
 	if str(paths.get("onnx", "")).is_empty():
 		paths = ClipProbeIo.resolve_model_paths(false)
 	return paths
+
+
+func _try_load_onnx(loader, prefer_tcn: bool) -> Dictionary:
+	## Returns {ok, paths, diag}. Falls back tier-b/ci-smoke if TCN load fails.
+	var order: Array[bool] = []
+	if prefer_tcn:
+		order.assign([true, false])
+	else:
+		order.assign([false])
+	var last_paths := {}
+	for want_tcn in order:
+		var paths: Dictionary = ClipProbeIo.resolve_model_paths(want_tcn)
+		last_paths = paths
+		var onnx_path := str(paths.get("onnx", ""))
+		if onnx_path.is_empty() or not FileAccess.file_exists(onnx_path):
+			continue
+		if loader.load_model(onnx_path):
+			var diag: Dictionary = {}
+			if loader.has_method("get_diagnostics"):
+				diag = loader.get_diagnostics()
+			print(
+				"viseme_timeline load_model ok id=%s onnx=%s loader_build=%s" % [
+					str(paths.get("id", "?")),
+					onnx_path,
+					str(diag.get("loader_build", "?")),
+				]
+			)
+			return {"ok": true, "paths": paths, "diag": diag}
+		push_warning(
+			"viseme_timeline load_model failed id=%s onnx=%s (will try fallback)" % [
+				str(paths.get("id", "?")),
+				onnx_path,
+			]
+		)
+	var diag_fail: Dictionary = {}
+	if loader.has_method("get_diagnostics"):
+		diag_fail = loader.get_diagnostics()
+	return {"ok": false, "paths": last_paths, "diag": diag_fail}
 
 
 func _infer_from_pcm() -> int:
@@ -559,8 +598,12 @@ func _infer_from_pcm() -> int:
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if mel == null or loader == null:
 		return 1
-	if not loader.load_model(onnx_path):
+	var loaded: Dictionary = _try_load_onnx(loader, true)
+	if not bool(loaded.get("ok", false)):
 		return 1
+	paths = loaded["paths"]
+	onnx_path = str(paths.get("onnx", ""))
+	json_path = str(paths.get("json", ""))
 	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
 		push_error("MelFrontend configure failed for record infer")
 		return 1
@@ -621,9 +664,25 @@ func _load_and_run() -> int:
 		return 1
 
 	## Ignore repo-relative onnx/wav in the probe — resolve inside the Godot project.
-	var model_paths := _default_model_paths()
+	var loader = ClassDB.instantiate("OnnxLoader")
+	if loader == null:
+		_status = "OnnxLoader missing"
+		push_error(_status)
+		return 1
+	var loaded: Dictionary = _try_load_onnx(loader, true)
+	if not bool(loaded.get("ok", false)):
+		var fail_paths: Dictionary = loaded.get("paths", {})
+		var diag: Dictionary = loaded.get("diag", {})
+		_status = "OnnxLoader load_model failed (%s) loader_build=%s" % [
+			str(fail_paths.get("onnx", "")),
+			str(diag.get("loader_build", "?")),
+		]
+		push_error(_status)
+		return 1
+	var model_paths: Dictionary = loaded["paths"]
 	var onnx_path := str(model_paths.get("onnx", ""))
 	var json_path := str(model_paths.get("json", ""))
+	var use_tcn := bool(model_paths.get("tcn", false))
 	var onnx_b_path := ""
 	var model_dir := str(model_paths.get("dir", ""))
 	if not model_dir.is_empty():
@@ -645,16 +704,6 @@ func _load_and_run() -> int:
 		_status = "MelFrontend missing"
 		push_error(_status)
 		return 1
-
-	var loader = ClassDB.instantiate("OnnxLoader")
-	if loader == null:
-		_status = "OnnxLoader missing"
-		push_error(_status)
-		return 1
-	if onnx_path.is_empty() or not loader.load_model(onnx_path):
-		_status = "OnnxLoader load_model failed (%s)" % onnx_path
-		push_error(_status)
-		return 1
 	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
 		_status = "MelFrontend configure failed"
 		push_error(_status)
@@ -674,25 +723,30 @@ func _load_and_run() -> int:
 		_status = "empty wav"
 		return 1
 
-	var contexts: Array = mel.build_utterance_contexts(_pcm)
-	if contexts.is_empty():
-		_status = "no mel contexts"
-		push_error(_status)
-		return 1
-
-	_series = _predict_series(loader, contexts)
+	if use_tcn:
+		_series = _predict_series_tcn(loader, mel, _pcm)
+	else:
+		var contexts: Array = mel.build_utterance_contexts(_pcm)
+		if contexts.is_empty():
+			_status = "no mel contexts"
+			push_error(_status)
+			return 1
+		_series = _predict_series(loader, contexts)
 	if _series.is_empty():
 		return 1
 
 	_series_b.clear()
-	if not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
+	if not use_tcn and not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
 		var loader_b = ClassDB.instantiate("OnnxLoader")
 		if loader_b != null and loader_b.load_model(onnx_b_path):
-			_series_b = _predict_series(loader_b, contexts)
+			var contexts_b: Array = mel.build_utterance_contexts(_pcm)
+			_series_b = _predict_series(loader_b, contexts_b)
 			if _label_b == "B":
 				_label_b = "B:%s" % onnx_b_path.get_file()
 		else:
 			push_warning("onnx_b failed to load: %s" % onnx_b_path)
+	elif not onnx_b_path.is_empty() and use_tcn:
+		push_warning("onnx_b skipped while primary is TCN")
 	elif not onnx_b_path.is_empty():
 		push_warning("onnx_b missing: %s" % onnx_b_path)
 
