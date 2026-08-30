@@ -134,7 +134,9 @@ func _process(_delta: float) -> void:
 			_hard_bytes.append(VisemeUtils.soft_to_hard_byte(_pipe.last_ovr))
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
-	var vad_s := str(_pipe.last_vad()) if _pipe.has_method("last_vad") else "?"
+	var vad_s: String = "?"
+	if _pipe.has_method("last_vad"):
+		vad_s = str(_pipe.last_vad())
 	var gate_s := "on" if _gate_on else "off"
 	var aec_s := "on" if _aec_on else "off"
 	if _last_ovr.size() > 0:

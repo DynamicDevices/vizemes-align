@@ -344,7 +344,9 @@ func _rebuild_source_options() -> void:
 	var has_train := not _boxes.is_empty() and not _series_train.is_empty()
 	var has_b := not _series_b.is_empty()
 	for opt in [_primary_opt, _secondary_opt]:
-		var prev := opt.get_selected_id() if opt.item_count > 0 else SRC_MODEL_A
+		var prev: int = SRC_MODEL_A
+		if opt.item_count > 0:
+			prev = opt.get_selected_id()
 		opt.clear()
 		opt.add_item("Ground truth", SRC_TRAIN)
 		opt.set_item_disabled(opt.get_item_index(SRC_TRAIN), not has_train)

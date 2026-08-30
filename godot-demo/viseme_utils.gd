@@ -263,7 +263,10 @@ static func _configure_mel_from_dict(mel: Object, data: Dictionary) -> bool:
 	var fmin := float(audio.get("fmin", 50.0))
 	var fmax := float(audio.get("fmax", 8000.0))
 	var visemes: Variant = data.get("visemes", {})
-	var n_vis := int(data.get("n_visemes", visemes.size() if visemes is Dictionary else 15))
+	var n_vis_default: int = 15
+	if visemes is Dictionary:
+		n_vis_default = visemes.size()
+	var n_vis := int(data.get("n_visemes", n_vis_default))
 	var feats := int(data.get("input_features", ctx * n_mels))
 	return mel.configure(ctx, n_mels, sr, hop, win, n_fft, fmin, fmax, n_vis, feats)
 
