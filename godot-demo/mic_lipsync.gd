@@ -6,6 +6,7 @@ extends Control
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const PULL_MAX := 4096
 
 @onready var _label: Label = %Label

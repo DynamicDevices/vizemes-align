@@ -3,6 +3,7 @@ extends Node
 ## Configure the effect's MelFrontend, then print contexts as the bus plays.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 var _fx: Object ## MelAudioEffect
 

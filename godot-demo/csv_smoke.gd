@@ -1,5 +1,7 @@
 extends Node
-## OnnxLoader CSV smoke against vizemes export/ci-smoke (shared loader addon).
+## OnnxLoader CSV smoke against vizeme-onnxmodels/ci-smoke (shared loader addon).
+
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 func _softmax(logits: PackedFloat32Array) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
@@ -22,7 +24,7 @@ func _softmax(logits: PackedFloat32Array) -> PackedFloat32Array:
 
 
 func _ready() -> void:
-	var paths := ClipProbeIo.resolve_model_paths(false)
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
 	var onnx_path := str(paths.get("onnx", ""))
 	var pack := str(paths.get("dir", ClipProbeIo.models_abs().path_join("ci-smoke")))
 	var csv_path := pack.path_join("demo_inputs.csv")

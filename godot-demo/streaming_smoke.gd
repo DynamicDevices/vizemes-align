@@ -2,11 +2,12 @@ extends Node
 ## Chunked PCM → push_pcm / get_next_context (live mic shape) → ONNX.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const CHUNK_SAMPLES := 1600
 
 
 func _ready() -> void:
-	var paths := ClipProbeIo.resolve_model_paths(false)
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
 	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")

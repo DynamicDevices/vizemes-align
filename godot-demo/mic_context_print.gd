@@ -3,6 +3,7 @@ extends Node
 ## Shout into the mic; printed RMS / peak of each context should move.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 var _mel: Object
 var _frames := 0

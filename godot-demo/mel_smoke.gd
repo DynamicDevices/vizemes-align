@@ -2,6 +2,7 @@ extends Node
 ## MelFrontend + OnnxLoader: ci-fixture.wav → mel → logits; hit-rate vs demo_inputs.csv.
 
 const VisemeUtils := preload("res://viseme_utils.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 const MATCH_L2 := 0.01
 
 
@@ -43,7 +44,7 @@ func _run_hit_rate(loader: Object, contexts: Array, csv_path: String, nfeat: int
 
 
 func _ready() -> void:
-	var paths := ClipProbeIo.resolve_model_paths(false)
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
 	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var pack := str(paths.get("dir", ClipProbeIo.models_abs().path_join("ci-smoke")))

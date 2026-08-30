@@ -121,6 +121,20 @@ static func resolve_model_dir() -> String:
 	return models_abs().path_join("ci-smoke")
 
 
+static func resolve_ci_smoke_paths() -> Dictionary:
+	## Prefer the ci-smoke pack for headless smokes (demo_inputs.csv parity).
+	for p in list_model_packs():
+		if str(p.get("id", "")) == "ci-smoke":
+			return {
+				"onnx": str(p["onnx_abs"]),
+				"json": str(p.get("json_abs", "")),
+				"dir": str(p["dir_abs"]),
+				"tcn": false,
+				"id": "ci-smoke",
+			}
+	return resolve_model_paths(false)
+
+
 static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 	var packs := list_model_packs()
 	var order: Array[String] = ["tier-b-tcn", "tier-b", "ci-smoke"] if prefer_tcn \

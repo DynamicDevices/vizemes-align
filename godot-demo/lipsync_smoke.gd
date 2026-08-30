@@ -4,10 +4,11 @@ extends Node
 const VisemePipelineScript := preload("res://viseme_pipeline.gd")
 const VisemeUtils := preload("res://viseme_utils.gd")
 const VisemeTarget := preload("res://viseme_target.gd")
+const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 
 func _ready() -> void:
-	var paths := ClipProbeIo.resolve_model_paths(false)
+	var paths := ClipProbeIo.resolve_ci_smoke_paths()
 	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
