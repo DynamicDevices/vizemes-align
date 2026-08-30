@@ -234,10 +234,12 @@ jobs:
           # Same gate Julian hit: bare `nix develop` GODOT_BIN is still 4.5.1.
           # Use godot_46_ms_ort + nixos-26.05 godot_4_6 (see julian_vizemes_smoke.sh).
           mkdir -p "$ONNX_LOADER_SCONS_CACHE"
+          # Pin to CreateSessionFromArray fix until merged (PR DynamicDevices/godot-onnx-loader#26).
+          ONNX_LOADER_REF="${ONNX_LOADER_REF:-feat/session-from-array}"
           if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
-            git clone --depth 1 --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
+            git clone --depth 1 --branch "$ONNX_LOADER_REF" --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
           else
-            git -C "$ONNX_LOADER_ROOT" fetch --depth 1 origin main
+            git -C "$ONNX_LOADER_ROOT" fetch --depth 1 origin "$ONNX_LOADER_REF"
             git -C "$ONNX_LOADER_ROOT" checkout -f FETCH_HEAD
             git -C "$ONNX_LOADER_ROOT" submodule update --init --recursive
           fi
