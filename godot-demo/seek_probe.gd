@@ -162,10 +162,16 @@ func _mel_l2(a: PackedFloat32Array, b: Array) -> float:
 func _run_probe() -> int:
 	var probe_path := OS.get_environment("SEEK_PROBE_JSON").strip_edges()
 	if probe_path.is_empty():
-		probe_path = ClipProbeIo.models_abs().path_join("ci-smoke/seek_probe.json")
+		for cand in [
+			ClipProbeIo.models_abs().path_join("ci-smoke/seek_probe.json"),
+			ClipProbeIo.models_abs().path_join("ci-smoke/seek_probe_ci_fixture.json"),
+		]:
+			if FileAccess.file_exists(cand):
+				probe_path = cand
+				break
 	elif not probe_path.is_absolute_path():
 		probe_path = ClipProbeIo.project_abs().path_join(probe_path)
-	if not probe_path.begins_with(ClipProbeIo.project_abs()) \
+	if probe_path.is_empty() or not probe_path.begins_with(ClipProbeIo.project_abs()) \
 			or not FileAccess.file_exists(probe_path):
 		_set_status("missing seek_probe.json under res://addons/vizeme-onnxmodels — Load a stem or sync")
 		push_error(_status.text)
