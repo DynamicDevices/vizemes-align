@@ -41,7 +41,9 @@ func _ready() -> void:
 		last_ovr = ovr
 		frames += 1
 
-	var call_count := int(target.get("call_count")) if "call_count" in target else frames
+	var call_count: int = frames
+	if "call_count" in target:
+		call_count = int(target.get("call_count"))
 	if frames <= 0 or call_count < frames:
 		# Real VisemeSystem has no call_count — trust frames > 0
 		if target.name != "VisemeSystem" or frames <= 0:

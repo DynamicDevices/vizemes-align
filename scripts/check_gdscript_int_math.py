@@ -17,6 +17,10 @@ TYPED_ARRAY_TERNARY = re.compile(
     r"Array\[[^\]]+\]\s*=\s*[^\n;]+?\s+if\s+.+?\s+else\s+",
     re.MULTILINE,
 )
+# Godot often fails to infer `var x := obj.method() if c else y` (Julian mid 972).
+INFERRED_METHOD_TERNARY = re.compile(
+    r"^\s*var\s+\w+\s*:=\s*.+\.\w+\s*\(.*\)\s+if\s+.+\s+else\s+",
+)
 
 CALL_RE = re.compile(r"\b(" + "|".join(FUNCS) + r")\s*\(")
 
@@ -52,6 +56,10 @@ def check_typed_array_ternary(root: Path) -> list[str]:
                 lines = src.splitlines()
                 if i < len(lines) and " else " in lines[i]:
                     errs.append(f"{path}:{i}: typed Array ternary (use .assign / if-block)")
+            if INFERRED_METHOD_TERNARY.search(line):
+                errs.append(
+                    f"{path}:{i}: inferred := method ternary (use explicit type or if-block)"
+                )
     return errs
 
 def _arg_floatish(arg: str) -> bool:
@@ -158,11 +166,12 @@ def main() -> int:
             print(f"  {h}", file=sys.stderr)
         print(
             "\nHint: mini/maxi/clampi cast to int; prefer minf/maxf/clampf for times/pixels.\n"
-            "Typed Array[T] cannot be assigned from a ternary — use .assign() / if-block.",
+            "Typed Array[T] cannot be assigned from a ternary — use .assign() / if-block.\n"
+            "Avoid `var x := obj.method() if c else y` — give an explicit type or use an if-block.",
             file=sys.stderr,
         )
         return 1
-    print(f"ok: no GDScript int-math / typed-Array ternary footguns under {root}")
+    print(f"ok: no GDScript int-math / ternary footguns under {root}")
     return 0
 
 
