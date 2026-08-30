@@ -40,8 +40,9 @@ if [[ -n "${ONNX_LOADER_ROOT:-}" && -f "${ONNX_LOADER_ROOT}/build/libonnx_runtim
 fi
 
 # Once Godot has mapped libstdc++.so.6, dlopen(ORT) reuses it (RPATH cannot
-# replace). Prefer preloading the same gcc runtime we bundled beside ORT.
-if [[ -z "${LD_PRELOAD:-}" && -d /nix/store ]]; then
+# replace). LD_PRELOAD of the *wrong* libstdc++ aborts Godot on Nix — only
+# preload when ONNX_TCN_LD_PRELOAD=1 (explicit experiment).
+if [[ "${ONNX_TCN_LD_PRELOAD:-0}" == "1" && -z "${LD_PRELOAD:-}" && -d /nix/store ]]; then
 	_preload=()
 	_bin="$ROOT/addons/onnx_loader/bin"
 	[[ -f "$_bin/libstdc++.so.6" ]] && _preload+=("$_bin/libstdc++.so.6")
@@ -51,6 +52,14 @@ if [[ -z "${LD_PRELOAD:-}" && -d /nix/store ]]; then
 		LD_PRELOAD="$(IFS=:; echo "${_preload[*]}")${LD_PRELOAD:+:$LD_PRELOAD}"
 		echo "run_tcn_load_probe: LD_PRELOAD=$LD_PRELOAD"
 	fi
+fi
+
+# Nix godot4 is often a wrapper — dump enough to resolve its ELF/libstdc++.
+if [[ -d /nix/store ]]; then
+	echo "run_tcn_load_probe: GODOT_BIN=$GODOT"
+	file "$GODOT" || true
+	head -c 4 "$GODOT" | od -An -tx1 || true
+	head -n 30 "$GODOT" 2>/dev/null || true
 fi
 
 set +e
