@@ -57,9 +57,15 @@ fi
 # Nix godot4 is often a wrapper — dump enough to resolve its ELF/libstdc++.
 if [[ -d /nix/store ]]; then
 	echo "run_tcn_load_probe: GODOT_BIN=$GODOT"
-	file "$GODOT" || true
 	head -c 4 "$GODOT" | od -An -tx1 || true
-	head -n 30 "$GODOT" 2>/dev/null || true
+	if command -v readelf >/dev/null 2>&1; then
+		echo "run_tcn_load_probe: Godot NEEDED:"
+		readelf -d "$GODOT" | awk '/NEEDED|RPATH|RUNPATH/ {print}' || true
+	fi
+	if command -v ldd >/dev/null 2>&1; then
+		echo "run_tcn_load_probe: Godot ldd (cxx):"
+		ldd "$GODOT" 2>&1 | awk '/libstdc\+\+|libgcc_s|not found|mimalloc|jemalloc/ {print}' || true
+	fi
 fi
 
 set +e
