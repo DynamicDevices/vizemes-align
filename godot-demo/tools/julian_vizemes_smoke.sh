@@ -7,8 +7,9 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 ONNX="${ONNX_LOADER_ROOT:-$ROOT/../godot-onnx-loader}"
-# Keep the standalone Julian smoke aligned with this repository's flake.lock.
-NIXPKGS="${NIXPKGS:-github:NixOS/nixpkgs/56c02bc00adcf003215cc4bd996d6efaf4cff188}"
+# Match the immutable revision proven by godot-onnx-loader's full Godot 4.6
+# + store-ORT smoke (PR #32).
+NIXPKGS="${NIXPKGS:-github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41}"
 
 if [[ ! -d "$ONNX/.git" ]]; then
 	echo "julian_vizemes_smoke: missing godot-onnx-loader at $ONNX" >&2
