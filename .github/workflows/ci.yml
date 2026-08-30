@@ -248,7 +248,7 @@ jobs:
           export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
           (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_ms_ort.sh)
           NIXPKGS="${NIXPKGS:-github:nixos/nixpkgs/nixos-26.05}"
-          nix shell "${NIXPKGS}#godot_4_6" --command bash -c '
+          nix shell "${NIXPKGS}#godot_4_6" "${NIXPKGS}#gcc" --command bash -c '
             set -euo pipefail
             G=$(command -v godot4 || command -v godot || true)
             test -n "$G" && test -x "$G"

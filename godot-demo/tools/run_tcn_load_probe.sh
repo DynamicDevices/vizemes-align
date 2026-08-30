@@ -20,8 +20,12 @@ fi
 # Host path first (same ORT .so) — splits Godot-only vs ORT/Nix.
 if [[ -n "${ONNX_LOADER_ROOT:-}" && -f "${ONNX_LOADER_ROOT}/build/libonnx_runtime.a" ]]; then
 	echo "=== host CreateSession TCN (no Godot) ==="
+	set +e
 	bash "$ROOT/tools/host_tcn_create.sh" \
 		"$ROOT/addons/vizeme-onnxmodels/tier-b-tcn/model_final.onnx"
+	host_rc=$?
+	set -e
+	echo "host_tcn_create exit=$host_rc"
 fi
 
 set +e
