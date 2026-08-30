@@ -1,103 +1,39 @@
 # vizemes-align
 
-Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map phonemes → coded visemes, and export a **Godot-readable** package (audio + time-aligned viseme labels). Spectrogram / ONNX training stays on the Godot feature path (see Telegram Vizemes thread).
+Download LibriSpeech, force-align with **Montreal Forced Aligner (MFA)**, map phonemes → coded visemes, and export a **Godot-readable** package (audio + time-aligned viseme labels).
 
 **Godot minimum: 4.6** (`godot-demo/` + MelFrontend GDExtension). Sibling [godot-onnx-loader](https://github.com/DynamicDevices/godot-onnx-loader) supplies OnnxLoader; on Nix use its Godot 4.6 MS-ORT path when needed.
 
 Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
+## Docs
 
+| Doc | Contents |
+|-----|----------|
+| [docs/MODELS.md](docs/MODELS.md) | Download / use pre-built ONNX + sidecar JSON, latency, Godot timeline |
+| [docs/TRAINING.md](docs/TRAINING.md) | MFA, tensors, smoke + tier-B train, scoring, embedding metadata |
 
-## MFA on NixOS (important)
-
-`nix develop` must **not** use nixpkgs `micromamba` (it appears as `.mamba-wrapped` and MFA dies).
-
-```bash
-git pull
-./scripts/run_mfa.sh test-clean
-```
-
-`run_mfa.sh` now prefers `~/micromamba/bin/micromamba` and **auto-runs**
-`./scripts/bootstrap_mfa_micromamba.sh` if only the broken nix wrapper is present.
-
-## MFA env (one-time)
-
-```bash
-micromamba create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
-micromamba run -n mfa mfa model download acoustic english_us_arpa
-micromamba run -n mfa mfa model download dictionary english_us_arpa
-micromamba run -n mfa mfa model download g2p english_us_arpa
-```
-
-If you see `The given prefix does not exist: ".../envs/mfa"`, the env was never created — run the block above, then `./scripts/run_mfa.sh test-clean` again. Download/prepare need not be re-run.
-
-## NixOS / `nix develop`
-
-```bash
-git pull
-nix develop
-# Export path: requests/tqdm/numpy/textgrid come from the Nix store (no .venv).
-python3 -c 'import textgrid, numpy'
-# Train path (store-only; nixpkgs-train = nixos-25.11 Hydra cache — no .venv):
-nix develop .#train
-python3 scripts/build_train_tensors.py --subset test-clean
-python3 scripts/train_viseme_smoke.py --subset test-clean --context 20
-# MFA via wrapped upstream micromamba (not nixpkgs micromamba):
-./scripts/bootstrap_mfa_micromamba.sh
-./scripts/mamba_nixos.sh create -y -n mfa -c conda-forge python=3.12 montreal-forced-aligner
-./scripts/mamba_nixos.sh run -n mfa mfa model download acoustic english_us_arpa
-./scripts/mamba_nixos.sh run -n mfa mfa model download dictionary english_us_arpa
-./scripts/mamba_nixos.sh run -n mfa mfa model download g2p english_us_arpa
-./scripts/run_mfa.sh test-clean
-```
-
-`textgrid` is not in nixpkgs, so the flake builds it from PyPI into the store.
-Train uses `nixpkgs-train` (`nixos-25.11`) so torch/triton **download** from
-`cache.nixos.org` — unstable/26.05 often compile Triton locally. Non-NixOS /
-CI can still use `requirements.txt` (+ optional `requirements-train.txt`).
-
-The flake includes `steam-run` and sets `allowUnfree` so plain `nix develop`
-evaluates (no `NIXPKGS_ALLOW_UNFREE` / `--impure` needed). Bare
-`micromamba` from the internet still hits NixOS stub-ld — use
-`./scripts/mamba_nixos.sh` (or enable `programs.nix-ld.enable`).
-
-## Prerequisites
-
-- Python 3.11+
-- `ffmpeg`
-- `micromamba` env `mfa` with `montreal-forced-aligner`  
-  (`micromamba create -n mfa -c conda-forge python=3.12 montreal-forced-aligner`)
-- MFA models (US default):  
-  `micromamba run -n mfa mfa model download acoustic english_us_arpa`  
-  `micromamba run -n mfa mfa model download dictionary english_us_arpa`  
-  `micromamba run -n mfa mfa model download g2p english_us_arpa`
-
-## Quick start (small subset)
+## Quick start (alignment package)
 
 ```bash
 cd vizemes-align
 python3 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-# Train / mel smoke (torch — heavy; not pulled by CI / nix develop):
-#   pip install -r requirements-train.txt
 
-# 1) Download + extract LibriSpeech subset
 python scripts/download_librispeech.py --dataset test-clean
-
-# 2) Flatten to MFA-ready wav+lab corpus
 python scripts/prepare_corpus.py --subset test-clean
-
-# 3) MFA align → TextGrids / JSON
-./scripts/run_mfa.sh test-clean
-
-# 4) Phonemes → visemes + Godot package under data/export/
+./scripts/run_mfa.sh test-clean          # see docs/TRAINING.md for NixOS micromamba
 python scripts/export_godot_package.py --subset test-clean
+# or: ./scripts/pipeline.sh test-clean
 ```
 
-Or one shot:
+## Try a trained model
+
+See [docs/MODELS.md](docs/MODELS.md). Short path once `export/tier-b/` (or a release zip) is present:
 
 ```bash
-./scripts/pipeline.sh test-clean
+# open godot-demo/viseme_timeline.tscn  — Load prefers tier-b timeline when staged
+python3 scripts/eval_tier_b_hit_rate.py --model-dir export/tier-b
 ```
 
 ## Layout
@@ -108,41 +44,13 @@ Or one shot:
 | `data/prepared/<subset>/` | Flat wav + transcript for MFA |
 | `data/cache/` | MFA working dirs |
 | `data/export/<subset>/` | Godot-ingestible clips + viseme JSON/CSV |
+| `export/ci-smoke/` | Smoke ONNX |
+| `export/tier-b/` | Longer train checkpoints + timelines |
 | `configs/viseme_map_*.json` | Phoneme → 15-viseme maps (US ARPA / UK MFA) |
+| `docs/` | Training + model how-to |
 
 ## Notes
 
 - Start with `test-clean` or `dev-clean` before `train-clean-100`.
 - Own-voice fine-tune and noise aug come after this SoT path is solid.
 - Default topic for Briar Telegram sends while iterating: `vizemes` (group Alex/Julian/Briar).
-
-## NixOS MFA note
-
-nixpkgs `micromamba` often installs as `.mamba-wrapped` and then fails with
-`unknown MAMBA_EXE` / `exec: mfa: not found`. Use the upstream binary instead:
-
-```bash
-./scripts/bootstrap_mfa_micromamba.sh
-export PATH="$HOME/micromamba/bin:$PATH"
-./scripts/run_mfa.sh test-clean
-```
-
-
-## NixOS stub-ld (dynamic linker)
-
-If you see `Could not start dynamically linked executable: micromamba` /
-`nix.dev/permalink/stub-ld`, the upstream binary needs an FHS linker:
-
-```bash
-nix develop          # provides steam-run
-./scripts/bootstrap_mfa_micromamba.sh
-./scripts/run_mfa.sh test-clean
-```
-
-Or enable permanently in your NixOS config, then rebuild + re-login:
-
-```nix
-programs.nix-ld.enable = true;
-```
-
-Do **not** use nixpkgs `micromamba` (`.mamba-wrapped`) — MFA rejects it.

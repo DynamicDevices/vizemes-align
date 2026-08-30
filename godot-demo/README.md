@@ -89,6 +89,7 @@ Then open `viseme_timeline.tscn` (F6) — primary quality UI — or `seek_probe.
 - **Seek table…** opens expect/got + MEL dumps; **Mic…** opens live capture.
 - Wheel zoom, middle-drag pan, left-drag select, Space/P play, Esc clear, R reset.
 - A/B toggle models (if `onnx_b` set); D toggles argmax-disagreement ribbon; **H** toggles hard 1-byte/20ms viseme ribbon (MPEG-4-style id+blend).
+- **T** drives the top face from MFA/training expect boxes (quality ceiling) instead of ONNX A; **[** / **]** adjust crossfade width at box boundaries (default 60 ms).
 
 **Companion:** `seek_probe.tscn` — side-by-side expect vs got; full MEL dumps under
 `export/debug/seek_mel_<stem>_<t>.json` (written on each run; **Dump MEL** rewrites).

@@ -47,10 +47,14 @@ var _show_a := true
 var _show_b := true
 var _show_disagree := true
 var _show_hard := true
+## When true, top face follows MFA/training expect boxes (quality ceiling), not ONNX A.
+var _face_from_train := false
+## Crossfade width at expect-box boundaries (Julian: explore transition widths).
+var _train_transition_s := 0.06
 var _hard_bytes := PackedByteArray()
 var _hard_frame_s := 0.02
 var _status := ""
-var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=models  D=disagree  H=hard  Esc=clear"
+var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=models  D=disagree  H=hard  T=train-face  [/]=blend  Esc=clear"
 
 var _pcm := PackedFloat32Array()
 var _view_t0 := 0.0
@@ -153,12 +157,23 @@ func _feed_face_at_playhead() -> void:
 
 
 func _feed_face_at_time(t: float) -> void:
-	if _face == null or _series.is_empty():
+	if _face == null:
 		return
-	var t0 := float(_context_frames - 1) * _hop_s
-	var idx := int(round((t - t0) / _hop_s))
-	idx = clampi(idx, 0, _series.size() - 1)
-	var soft: PackedFloat32Array = _series[idx]
+	var soft := PackedFloat32Array()
+	if _face_from_train and not _boxes.is_empty():
+		var n_v := _names.size()
+		if n_v <= 0 and not _series.is_empty():
+			n_v = (_series[0] as PackedFloat32Array).size()
+		if n_v <= 0:
+			n_v = LINE_COLORS.size()
+		soft = VisemeUtils.expect_soft_at_time(_boxes, n_v, t, _train_transition_s)
+	elif not _series.is_empty():
+		var t0 := float(_context_frames - 1) * _hop_s
+		var idx := int(round((t - t0) / _hop_s))
+		idx = clampi(idx, 0, _series.size() - 1)
+		soft = _series[idx]
+	else:
+		return
 	var ovr := VisemeUtils.mlp_to_ovr(soft, _names)
 	if _face.has_method("set_visemes"):
 		_face.set_visemes(ovr)
@@ -260,7 +275,8 @@ func _refresh_plot_rect() -> void:
 	var r := _canvas_size()
 	var left := 72.0
 	var top := _ui_top + 8.0
-	var right := 24.0
+	## Right gutter holds the colour key + two-letter viseme codes (Julian 934).
+	var right := 108.0
 	var bottom := 56.0
 	_plot = Rect2(left, top, maxf(32.0, r.x - left - right), maxf(32.0, r.y - top - bottom))
 
@@ -321,42 +337,92 @@ func _finish_recording() -> void:
 	grab_focus()
 
 
+func _default_model_paths() -> Dictionary:
+	## Prefer onnxmodels/ then export/tier-b*; ci-smoke last. JSON optional.
+	## Allows TCN dirs when loader supports predict_shaped.
+	var root := _repo_root()
+	var demo := ProjectSettings.globalize_path("res://")
+	var candidates: Array[String] = [
+		demo.path_join("onnxmodels/tier-b-tcn"),
+		demo.path_join("onnxmodels/tier-b"),
+		root.path_join("export/tier-b-tcn"),
+		root.path_join("export/tier-b"),
+		root.path_join("export/ci-smoke"),
+	]
+	var env := OS.get_environment("VISEMES_MODEL_DIR")
+	if not env.is_empty():
+		var abs_env := env if env.is_absolute_path() else root.path_join(env)
+		candidates.push_front(abs_env)
+	for dir in candidates:
+		var onnx := ""
+		for name in ["model.onnx", "model_final.onnx"]:
+			var p := dir.path_join(name)
+			if FileAccess.file_exists(p):
+				onnx = p
+				break
+		if onnx.is_empty():
+			continue
+		var json_path := ""
+		for jn in ["model.json", "model_final.json"]:
+			var jp := dir.path_join(jn)
+			if FileAccess.file_exists(jp):
+				json_path = jp
+				break
+		var is_tcn := dir.contains("tier-b-tcn") or onnx.contains("tcn")
+		return {"onnx": onnx, "json": json_path, "dir": dir, "tcn": is_tcn}
+	return {
+		"onnx": root.path_join("export/ci-smoke/model.onnx"),
+		"json": root.path_join("export/ci-smoke/model.json"),
+		"dir": root.path_join("export/ci-smoke"),
+		"tcn": false,
+	}
+
+
 func _infer_from_pcm() -> int:
 	## Live/mic preview only: MelFrontend + ONNX → soft series + hard bytes.
 	## Does NOT run MFA / export_viseme_timeline (train-set alignment stays on Load).
 	if not ClassDB.class_exists("MelFrontend") or not ClassDB.class_exists("OnnxLoader"):
 		push_error("need MelFrontend + OnnxLoader")
 		return 1
-	var root := _repo_root()
-	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
-	var json_path := root.path_join("export/ci-smoke/model.json")
-	if not FileAccess.file_exists(onnx_path) or not FileAccess.file_exists(json_path):
+	var paths := _default_model_paths()
+	var onnx_path: String = paths["onnx"]
+	var json_path: String = paths["json"]
+	if not FileAccess.file_exists(onnx_path):
 		return 1
-	_names = VisemeUtils.load_id_to_name(json_path)
 	var mel = ClassDB.instantiate("MelFrontend")
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if mel == null or loader == null:
 		return 1
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
-		push_error("MelFrontend configure failed for record infer")
-		return 1
 	if not loader.load_model(onnx_path):
 		return 1
-	var contexts: Array = mel.build_utterance_contexts(_pcm)
-	if contexts.is_empty():
-		push_error("record infer: no mel contexts")
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+		push_error("MelFrontend configure failed for record infer")
 		return 1
-	_series = _predict_series(loader, contexts)
+	_names = VisemeUtils.load_id_to_name_from_onnx(loader)
+	if _names.is_empty() and not json_path.is_empty():
+		_names = VisemeUtils.load_id_to_name(json_path)
+	var use_tcn := bool(paths.get("tcn", false))
+	if not use_tcn and loader.has_method("get_metadata_value"):
+		use_tcn = str(loader.get_metadata_value("vizemes_model")).contains("tcn")
+	if use_tcn:
+		_series = _predict_series_tcn(loader, mel, _pcm)
+	else:
+		var contexts: Array = mel.build_utterance_contexts(_pcm)
+		if contexts.is_empty():
+			push_error("record infer: no mel contexts")
+			return 1
+		_series = _predict_series(loader, contexts)
 	if _series.is_empty():
 		return 1
 	_series_b.clear()
 	# Live clips have no MFA boxes — clear any leftover train-set align overlay.
 	_boxes.clear()
 	_words.clear()
-	_context_frames = 20
-	_hop_s = 0.01
+	if not use_tcn:
+		_context_frames = 20
+		_hop_s = 0.01
 	_rebuild_hard_bytes()
-	var t0 := float(_context_frames - 1) * _hop_s
+	var t0 := float(maxi(0, _context_frames - 1)) * _hop_s
 	_duration_s = t0 + float(maxi(0, _series.size() - 1)) * _hop_s
 	return 0
 
@@ -370,9 +436,25 @@ func _setup_audio() -> void:
 	add_child(_player)
 
 
+func _timeline_probe_path() -> String:
+	var root := _repo_root()
+	var env := OS.get_environment("VISEMES_TIMELINE_JSON")
+	if not env.is_empty():
+		return env if env.is_absolute_path() else root.path_join(env)
+	var demo := ProjectSettings.globalize_path("res://")
+	for p in [
+		demo.path_join("onnxmodels/tier-b/viseme_timeline.json"),
+		root.path_join("export/tier-b/viseme_timeline.json"),
+		ClipProbeIo.resolve_model_dir().path_join("viseme_timeline.json"),
+	]:
+		if FileAccess.file_exists(p):
+			return p
+	return root.path_join("export/ci-smoke/viseme_timeline.json")
+
+
 func _load_and_run() -> int:
 	var root := _repo_root()
-	var path := root.path_join("export/ci-smoke/viseme_timeline.json")
+	var path := _timeline_probe_path()
 	if not FileAccess.file_exists(path):
 		_status = "missing viseme_timeline.json — run: python3 scripts/export_viseme_timeline.py"
 		push_error(_status)
@@ -405,10 +487,6 @@ func _load_and_run() -> int:
 		_status = "MelFrontend missing"
 		push_error(_status)
 		return 1
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
-		_status = "MelFrontend configure failed"
-		push_error(_status)
-		return 1
 
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if loader == null:
@@ -419,6 +497,15 @@ func _load_and_run() -> int:
 		_status = "OnnxLoader load_model failed"
 		push_error(_status)
 		return 1
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+		_status = "MelFrontend configure failed"
+		push_error(_status)
+		return 1
+	var names_onnx: Array = VisemeUtils.load_id_to_name_from_onnx(loader)
+	if not names_onnx.is_empty():
+		_names = names_onnx
+	elif _names.is_empty() and FileAccess.file_exists(json_path):
+		_names = VisemeUtils.load_id_to_name(json_path)
 
 	_pcm = VisemeUtils.load_wav_pcm(wav_path)
 	if _pcm.is_empty():
@@ -489,6 +576,39 @@ func _predict_series(loader, contexts: Array) -> Array:
 	return out
 
 
+func _predict_series_tcn(loader, mel: Object, pcm: PackedFloat32Array) -> Array:
+	## Full-utterance TCN: mel [T,F] → logits [T,C] via predict_shaped([1,T,F]).
+	if not loader.has_method("predict_shaped") or not mel.has_method("build_utterance_mels"):
+		_status = "TCN needs OnnxLoader.predict_shaped + MelFrontend.build_utterance_mels"
+		push_error(_status)
+		return []
+	var pack: Dictionary = mel.build_utterance_mels(pcm)
+	var frames: PackedFloat32Array = pack.get("frames", PackedFloat32Array())
+	var n_frames := int(pack.get("n_frames", 0))
+	var n_mels := int(pack.get("n_mels", 0))
+	if frames.is_empty() or n_frames <= 0 or n_mels <= 0:
+		_status = "TCN mel matrix empty"
+		push_error(_status)
+		return []
+	var shape := PackedInt32Array([1, n_frames, n_mels])
+	var flat_logits: PackedFloat32Array = loader.predict_shaped(frames, shape)
+	if flat_logits.is_empty() or flat_logits.size() % n_frames != 0:
+		_status = "TCN predict_shaped failed"
+		push_error(_status)
+		return []
+	var n_vis := int(flat_logits.size() / n_frames)
+	var out: Array = []
+	for t in n_frames:
+		var row := PackedFloat32Array()
+		row.resize(n_vis)
+		for c in n_vis:
+			row[c] = flat_logits[t * n_vis + c]
+		out.append(VisemeUtils.softmax(row))
+	_context_frames = 1
+	_hop_s = 0.01
+	return out
+
+
 func _view_span() -> float:
 	return maxf(1e-4, _view_t1 - _view_t0)
 
@@ -528,7 +648,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		var k := event as InputEventKey
-		if k.keycode in [KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_A, KEY_B, KEY_D, KEY_H]:
+		if k.keycode in [
+			KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_A, KEY_B, KEY_D, KEY_H, KEY_T,
+			KEY_BRACKETLEFT, KEY_BRACKETRIGHT
+		]:
 			_handle_key(k)
 			get_viewport().set_input_as_handled()
 
@@ -567,6 +690,51 @@ func _handle_key(key: InputEventKey) -> void:
 			accept_event()
 		KEY_H:
 			_show_hard = not _show_hard
+			queue_redraw()
+			accept_event()
+		KEY_T:
+			if _boxes.is_empty():
+				_status = "T: no MFA/training boxes (Load a stem, or face stays on model A)"
+			else:
+				_face_from_train = not _face_from_train
+				_status = (
+					"face=training expect (blend %.0fms) — play to compare ceiling"
+					% (_train_transition_s * 1000.0)
+					if _face_from_train
+					else "face=model A"
+				)
+				if _playing:
+					_feed_face_at_playhead()
+				elif _sel_t0 >= 0.0:
+					_feed_face_at_time(_sel_t0)
+				else:
+					_feed_face_at_time(_view_t0)
+			queue_redraw()
+			accept_event()
+		KEY_BRACKETLEFT:
+			_train_transition_s = clampf(_train_transition_s - 0.01, 0.0, 0.25)
+			_status = "train blend %.0fms%s" % [
+				_train_transition_s * 1000.0,
+				" (face=train)" if _face_from_train else ""
+			]
+			if _face_from_train:
+				if _playing:
+					_feed_face_at_playhead()
+				elif _sel_t0 >= 0.0:
+					_feed_face_at_time(_sel_t0)
+			queue_redraw()
+			accept_event()
+		KEY_BRACKETRIGHT:
+			_train_transition_s = clampf(_train_transition_s + 0.01, 0.0, 0.25)
+			_status = "train blend %.0fms%s" % [
+				_train_transition_s * 1000.0,
+				" (face=train)" if _face_from_train else ""
+			]
+			if _face_from_train:
+				if _playing:
+					_feed_face_at_playhead()
+				elif _sel_t0 >= 0.0:
+					_feed_face_at_time(_sel_t0)
 			queue_redraw()
 			accept_event()
 
@@ -888,17 +1056,26 @@ func _draw_legend(n_v: int) -> void:
 		("%s%s" % ["● " if _show_a else "○ ", _label_a]),
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.95)
 	)
-	if _series_b.is_empty():
-		return
+	var face_y := foot + 16.0
+	if not _series_b.is_empty():
+		draw_string(
+			ThemeDB.fallback_font, Vector2(lx, face_y),
+			("%s%s" % ["● " if _show_b else "○ ", _label_b]),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.8, 0.9)
+		)
+		face_y += 16.0
+		draw_string(
+			ThemeDB.fallback_font, Vector2(lx, face_y),
+			("%sdisagree" % ["● " if _show_disagree else "○ "]),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.45)
+		)
+		face_y += 16.0
+	var face_src := "face:train %.0fms" % (_train_transition_s * 1000.0) if _face_from_train else "face:model A"
 	draw_string(
-		ThemeDB.fallback_font, Vector2(lx, foot + 16.0),
-		("%s%s" % ["● " if _show_b else "○ ", _label_b]),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.8, 0.9)
-	)
-	draw_string(
-		ThemeDB.fallback_font, Vector2(lx, foot + 32.0),
-		("%sdisagree" % ["● " if _show_disagree else "○ "]),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.45)
+		ThemeDB.fallback_font, Vector2(lx, face_y),
+		("%s%s" % ["● " if _face_from_train else "○ ", face_src]),
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
+		Color(0.55, 0.95, 0.65) if _face_from_train else Color(0.65, 0.7, 0.75)
 	)
 
 
