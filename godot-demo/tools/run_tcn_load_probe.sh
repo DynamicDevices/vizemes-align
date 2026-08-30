@@ -9,13 +9,24 @@ if [[ -z "$GODOT" || ! -x "$GODOT" ]]; then
 fi
 OUT="${OUT:-/tmp/vizemes-tcn-load-probe.txt}"
 cd "$ROOT"
+# Prefer onnx_loader-only for the TCN probe (isolate MelFrontend).
+PROBE_EXT="${PROBE_EXT_LIST:-onnx_only}"
 mkdir -p .godot
-if [[ ! -f .godot/extension_list.cfg ]]; then
+case "$PROBE_EXT" in
+onnx_only)
 	cat >.godot/extension_list.cfg <<EOF
+res://addons/onnx_loader/onnx_loader.gdextension
+EOF
+	;;
+*)
+	if [[ ! -f .godot/extension_list.cfg ]]; then
+		cat >.godot/extension_list.cfg <<EOF
 res://addons/onnx_loader/onnx_loader.gdextension
 res://addons/vizemes_mel/vizemes_mel.gdextension
 EOF
-fi
+	fi
+	;;
+esac
 
 # Host path first (same ORT .so) — splits Godot-only vs ORT/Nix.
 if [[ -n "${ONNX_LOADER_ROOT:-}" && -f "${ONNX_LOADER_ROOT}/build/libonnx_runtime.a" ]]; then
