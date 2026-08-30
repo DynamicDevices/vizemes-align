@@ -21,6 +21,10 @@ TYPED_ARRAY_TERNARY = re.compile(
 INFERRED_METHOD_TERNARY = re.compile(
     r"^\s*var\s+\w+\s*:=\s*.+\.\w+\s*\(.*\)\s+if\s+.+\s+else\s+",
 )
+# Untyped `for x in […]` makes x a Variant — `var y := x.method()` fails in editor (Julian 977).
+UNTYPED_FOR = re.compile(r"^\s*for\s+(\w+)\s+in\s+")
+TYPED_FOR = re.compile(r"^\s*for\s+\w+\s*:\s*\w+")
+INFERRED_FROM_LOOP_VAR = re.compile(r"^\s*var\s+\w+\s*:=\s*{var}\.")
 
 CALL_RE = re.compile(r"\b(" + "|".join(FUNCS) + r")\s*\(")
 
@@ -43,16 +47,24 @@ def check_typed_array_ternary(root: Path) -> list[str]:
             src = path.read_text(encoding="utf-8")
         except OSError:
             continue
+        untyped_loop_vars: set[str] = set()
         for i, line in enumerate(src.splitlines(), 1):
             if line.lstrip().startswith("#"):
                 continue
+            if TYPED_FOR.match(line):
+                # typed for shadows any prior untyped same name in this file scan
+                m = re.match(r"^\s*for\s+(\w+)\s*:", line)
+                if m:
+                    untyped_loop_vars.discard(m.group(1))
+            else:
+                m = UNTYPED_FOR.match(line)
+                if m:
+                    untyped_loop_vars.add(m.group(1))
             if TYPED_ARRAY_TERNARY.search(line) or (
                 "Array[" in line and " = " in line and " if " in line and line.rstrip().endswith("\\")
             ):
-                # also catch split-line ternaries starting with Array[T] =
                 errs.append(f"{path}:{i}: typed Array ternary (use .assign / if-block)")
             elif "Array[" in line and " = " in line and line.rstrip().endswith("\\"):
-                # peek next line for else
                 lines = src.splitlines()
                 if i < len(lines) and " else " in lines[i]:
                     errs.append(f"{path}:{i}: typed Array ternary (use .assign / if-block)")
@@ -60,6 +72,13 @@ def check_typed_array_ternary(root: Path) -> list[str]:
                 errs.append(
                     f"{path}:{i}: inferred := method ternary (use explicit type or if-block)"
                 )
+            for v in untyped_loop_vars:
+                if re.search(rf"^\s*var\s+\w+\s*:=\s*{re.escape(v)}\.", line):
+                    errs.append(
+                        f"{path}:{i}: inferred := from untyped for-loop var '{v}' "
+                        "(type the for-loop or the var)"
+                    )
+                    break
     return errs
 
 def _arg_floatish(arg: str) -> bool:
