@@ -256,5 +256,6 @@ jobs:
             unset ONNX_ORT_BIN
             export ONNX_LOADER_SKIP_SESSION_RELEASE=1
             cd "'"$GITHUB_WORKSPACE"'"
+            bash godot-demo/tools/gdscript_check_only.sh
             bash godot-demo/tools/godot_mel_smoke.sh
           '

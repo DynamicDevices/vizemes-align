@@ -52,6 +52,13 @@ path (`bash tools/godot_46_ms_ort.sh`) or a stock 4.6 editor binary.
 
 Host smoke (no Godot): `scons smoke-csv` in godot-onnx-loader; `make smoke-csv` in gdextension.
 
+GDScript editor parse gate (Godot `--check-only`, catches `:=` inference footguns):
+
+```bash
+export GODOT_BIN=~/Downloads/Godot_v4.6.1-stable_linux.x86_64   # or nix godot_4_6
+bash godot-demo/tools/gdscript_check_only.sh
+```
+
 Headless Godot (both GDExtensions): `bash godot-demo/tools/godot_mel_smoke.sh`
 
 **Julian Nix one-liner** (builds MelFrontend + OnnxLoader via Godot **4.6** MS-ORT, then smokes):

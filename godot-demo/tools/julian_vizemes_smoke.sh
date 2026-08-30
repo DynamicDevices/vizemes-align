@@ -29,6 +29,17 @@ echo "=== OnnxLoader Godot 4.6 MS-ORT (csv proof) ==="
 cd "$ONNX"
 bash tools/godot_46_ms_ort.sh
 
+echo "=== GDScript --check-only (editor parse footguns) ==="
+root_q=$(printf '%q' "$ROOT")
+nix shell "${NIXPKGS}#godot_4_6" --command bash -c "
+set -euo pipefail
+G=\$(command -v godot4 || command -v godot || true)
+test -n \"\$G\" && test -x \"\$G\"
+export GODOT_BIN=\"\$G\"
+cd $root_q
+bash godot-demo/tools/gdscript_check_only.sh
+"
+
 echo "=== Vizemes headless smokes on Godot 4.6 ==="
 root_q=$(printf '%q' "$ROOT")
 nix shell "${NIXPKGS}#godot_4_6" --command bash -c "
