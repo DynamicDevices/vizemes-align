@@ -188,15 +188,15 @@ static func resolve_wav_for_probe(probe: Dictionary) -> String:
 	var base := wav_rel.get_file()
 	if base.is_empty():
 		base = "ci-fixture.wav"
-	var candidates: Array[String] = [
-		models_abs().path_join("fixtures").path_join(base),
-		models_abs().path_join("ci-smoke").path_join(base),
-		models_abs().path_join("tier-b").path_join(base),
-		models_abs().path_join("fixtures/ci-fixture.wav"),
+	var res_candidates: Array[String] = [
+		MODELS_RES.path_join("fixtures").path_join(base),
+		MODELS_RES.path_join("ci-smoke").path_join(base),
+		MODELS_RES.path_join("tier-b").path_join(base),
+		MODELS_RES.path_join("fixtures/ci-fixture.wav"),
 	]
-	for c in candidates:
+	for c in res_candidates:
 		if FileAccess.file_exists(c):
-			return c
+			return res_to_abs(c)
 	return ""
 
 
