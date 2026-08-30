@@ -185,6 +185,74 @@ static func configure_mel_from_json(mel: Object, json_path: String) -> bool:
 	if typeof(data) != TYPE_DICTIONARY:
 		push_error("configure_mel_from_json: bad JSON %s" % json_path)
 		return false
+	return _configure_mel_from_dict(mel, data)
+
+
+## Prefer ONNX vizemes_* metadata (Julian 889); optional JSON fallback path.
+static func configure_mel_from_onnx(mel: Object, loader: Object, json_fallback: String = "") -> bool:
+	if mel == null or loader == null:
+		return false
+	if not loader.has_method("get_metadata_value"):
+		if not json_fallback.is_empty():
+			return configure_mel_from_json(mel, json_fallback)
+		return false
+	var blob := str(loader.get_metadata_value("vizemes_meta_json"))
+	if not blob.is_empty():
+		var data: Variant = JSON.parse_string(blob)
+		if typeof(data) == TYPE_DICTIONARY:
+			return _configure_mel_from_dict(mel, data)
+	# Flat keys if full JSON missing
+	var ctx := int(str(loader.get_metadata_value("vizemes_context_frames")))
+	var n_mels := int(str(loader.get_metadata_value("vizemes_n_mels")))
+	var sr := int(str(loader.get_metadata_value("vizemes_sample_rate")))
+	if ctx > 0 and n_mels > 0 and sr > 0:
+		var hop := int(str(loader.get_metadata_value("vizemes_hop_length_samples")))
+		var win := int(str(loader.get_metadata_value("vizemes_window_length_samples")))
+		var n_fft := int(str(loader.get_metadata_value("vizemes_n_fft")))
+		var fmin := float(str(loader.get_metadata_value("vizemes_fmin")))
+		var fmax := float(str(loader.get_metadata_value("vizemes_fmax")))
+		var n_vis := int(str(loader.get_metadata_value("vizemes_n_visemes")))
+		var feats := int(str(loader.get_metadata_value("vizemes_input_features")))
+		if hop <= 0:
+			hop = 160
+		if win <= 0:
+			win = 400
+		if n_fft <= 0:
+			n_fft = 1024
+		if fmin <= 0.0:
+			fmin = 50.0
+		if fmax <= 0.0:
+			fmax = 8000.0
+		if n_vis <= 0:
+			n_vis = 15
+		if feats <= 0:
+			feats = ctx * n_mels
+		return mel.configure(ctx, n_mels, sr, hop, win, n_fft, fmin, fmax, n_vis, feats)
+	if not json_fallback.is_empty():
+		return configure_mel_from_json(mel, json_fallback)
+	push_error("configure_mel_from_onnx: no vizemes metadata on model")
+	return false
+
+
+static func load_id_to_name_from_onnx(loader: Object) -> Array:
+	if loader == null or not loader.has_method("get_metadata_value"):
+		return []
+	var blob := str(loader.get_metadata_value("vizemes_meta_json"))
+	if blob.is_empty():
+		return []
+	var data: Variant = JSON.parse_string(blob)
+	if typeof(data) != TYPE_DICTIONARY:
+		return []
+	var visemes: Dictionary = data.get("visemes", {})
+	var n: int = int(data.get("n_visemes", visemes.size()))
+	var names: Array = []
+	names.resize(n)
+	for key in visemes.keys():
+		names[int(visemes[key])] = str(key)
+	return names
+
+
+static func _configure_mel_from_dict(mel: Object, data: Dictionary) -> bool:
 	var audio: Dictionary = data.get("audio", {})
 	var ctx := int(data.get("context_frames", 20))
 	var n_mels := int(audio.get("n_mels", data.get("n_mels", 80)))
@@ -214,6 +282,95 @@ static func mlp_to_ovr(weights: PackedFloat32Array, id_to_name: Array) -> Packed
 		if idx >= 0:
 			ovr[idx] = weights[i]
 	return ovr
+
+
+## MFA / training-timeline soft weights at time t (model class space).
+## Inside a box → one-hot expect_id. Near a box boundary → monotonic crossfade
+## between the two neighbouring expect ids over `transition_s` (default 60 ms).
+static func expect_soft_at_time(
+	boxes: Array, n_visemes: int, t: float, transition_s: float = 0.06
+) -> PackedFloat32Array:
+	var n := maxi(1, n_visemes)
+	var out := PackedFloat32Array()
+	out.resize(n)
+	for i in n:
+		out[i] = 0.0
+	if boxes.is_empty():
+		# silence / empty
+		out[0] = 1.0
+		return out
+	var half := maxf(0.0, transition_s) * 0.5
+	var cur_i := -1
+	var prev_i := -1
+	var next_i := -1
+	for i in boxes.size():
+		var b: Variant = boxes[i]
+		if typeof(b) != TYPE_DICTIONARY:
+			continue
+		var t0 := float(b.get("start", 0.0))
+		var t1 := float(b.get("end", 0.0))
+		if t >= t0 and t < t1:
+			cur_i = i
+			break
+		if t1 <= t:
+			prev_i = i
+		elif next_i < 0 and t0 > t:
+			next_i = i
+	# Gap between boxes: treat as silence unless still inside a transition.
+	if cur_i < 0:
+		if prev_i >= 0 and next_i >= 0 and half > 0.0:
+			var t_b := float((boxes[prev_i] as Dictionary).get("end", t))
+			# Prefer abut mid-point if next starts later.
+			var t_n0 := float((boxes[next_i] as Dictionary).get("start", t_b))
+			t_b = 0.5 * (t_b + t_n0)
+			if absf(t - t_b) <= half:
+				var alpha := clampf((t - (t_b - half)) / maxf(1e-6, transition_s), 0.0, 1.0)
+				_blend_expect_ids(out, boxes, prev_i, next_i, alpha)
+				return out
+		out[0] = 1.0
+		return out
+	var cur: Dictionary = boxes[cur_i]
+	var id_cur := clampi(int(cur.get("expect_id", 0)), 0, n - 1)
+	if half <= 0.0:
+		out[id_cur] = 1.0
+		return out
+	var t0c := float(cur.get("start", 0.0))
+	var t1c := float(cur.get("end", 0.0))
+	# Don't let blend eat an entire short box.
+	var local_half := minf(half, maxf(0.0, (t1c - t0c) * 0.45))
+	var local_trans := maxf(1e-6, local_half * 2.0)
+	# Leading edge: blend from previous box.
+	if cur_i > 0 and local_half > 0.0 and t < t0c + local_half:
+		var alpha := clampf((t - (t0c - local_half)) / local_trans, 0.0, 1.0)
+		_blend_expect_ids(out, boxes, cur_i - 1, cur_i, alpha)
+		return out
+	# Trailing edge: blend into next box.
+	if cur_i + 1 < boxes.size() and local_half > 0.0 and t > t1c - local_half:
+		var alpha := clampf((t - (t1c - local_half)) / local_trans, 0.0, 1.0)
+		_blend_expect_ids(out, boxes, cur_i, cur_i + 1, alpha)
+		return out
+	out[id_cur] = 1.0
+	return out
+
+
+static func _blend_expect_ids(
+	out: PackedFloat32Array, boxes: Array, i_a: int, i_b: int, alpha: float
+) -> void:
+	var n := out.size()
+	for i in n:
+		out[i] = 0.0
+	var a: Dictionary = boxes[i_a]
+	var b: Dictionary = boxes[i_b]
+	var id_a := clampi(int(a.get("expect_id", 0)), 0, n - 1)
+	var id_b := clampi(int(b.get("expect_id", 0)), 0, n - 1)
+	var u := clampf(alpha, 0.0, 1.0)
+	# Smoothstep for less mechanical mid-point hold.
+	u = u * u * (3.0 - 2.0 * u)
+	if id_a == id_b:
+		out[id_a] = 1.0
+	else:
+		out[id_a] = 1.0 - u
+		out[id_b] = u
 
 
 static func find_nearest_context(
