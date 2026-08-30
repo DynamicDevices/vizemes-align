@@ -137,8 +137,11 @@ static func resolve_ci_smoke_paths() -> Dictionary:
 
 static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 	var packs := list_model_packs()
-	var order: Array[String] = ["tier-b-tcn", "tier-b", "ci-smoke"] if prefer_tcn \
-			else ["tier-b", "ci-smoke", "tier-b-tcn"]
+	var order: Array[String] = []
+	if prefer_tcn:
+		order.assign(["tier-b-tcn", "tier-b", "ci-smoke"])
+	else:
+		order.assign(["tier-b", "ci-smoke", "tier-b-tcn"])
 	for id in order:
 		for p in packs:
 			if str(p.get("id", "")) != id:

@@ -13,6 +13,11 @@ import sys
 from pathlib import Path
 
 FUNCS = ("mini", "maxi", "clampi")
+TYPED_ARRAY_TERNARY = re.compile(
+    r"Array\[[^\]]+\]\s*=\s*[^\n;]+?\s+if\s+.+?\s+else\s+",
+    re.MULTILINE,
+)
+
 CALL_RE = re.compile(r"\b(" + "|".join(FUNCS) + r")\s*\(")
 
 FLOATISH_IDENT = re.compile(
@@ -24,6 +29,30 @@ FLOATISH_IDENT = re.compile(
     """
 )
 
+
+
+def check_typed_array_ternary(root: Path) -> list[str]:
+    """Godot rejects `var x: Array[String] = a if c else b` (untyped Array)."""
+    errs: list[str] = []
+    for path in sorted(root.rglob("*.gd")):
+        try:
+            src = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for i, line in enumerate(src.splitlines(), 1):
+            if line.lstrip().startswith("#"):
+                continue
+            if TYPED_ARRAY_TERNARY.search(line) or (
+                "Array[" in line and " = " in line and " if " in line and line.rstrip().endswith("\\")
+            ):
+                # also catch split-line ternaries starting with Array[T] =
+                errs.append(f"{path}:{i}: typed Array ternary (use .assign / if-block)")
+            elif "Array[" in line and " = " in line and line.rstrip().endswith("\\"):
+                # peek next line for else
+                lines = src.splitlines()
+                if i < len(lines) and " else " in lines[i]:
+                    errs.append(f"{path}:{i}: typed Array ternary (use .assign / if-block)")
+    return errs
 
 def _arg_floatish(arg: str) -> bool:
     s = arg.strip()
@@ -122,16 +151,18 @@ def main() -> int:
     bad: list[str] = []
     for path in sorted(root.rglob("*.gd")):
         bad.extend(check_file(path))
+    bad.extend(check_typed_array_ternary(root))
     if bad:
-        print("GDScript int-math footgun(s):", file=sys.stderr)
+        print("GDScript footgun(s):", file=sys.stderr)
         for h in bad:
             print(f"  {h}", file=sys.stderr)
         print(
-            "\nHint: mini/maxi/clampi cast to int; prefer minf/maxf/clampf for times/pixels.",
+            "\nHint: mini/maxi/clampi cast to int; prefer minf/maxf/clampf for times/pixels.\n"
+            "Typed Array[T] cannot be assigned from a ternary — use .assign() / if-block.",
             file=sys.stderr,
         )
         return 1
-    print(f"ok: no float-looking mini/maxi/clampi under {root}")
+    print(f"ok: no GDScript int-math / typed-Array ternary footguns under {root}")
     return 0
 
 
