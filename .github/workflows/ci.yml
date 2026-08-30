@@ -227,15 +227,16 @@ jobs:
             test -f ../addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
 
-      - name: Godot mel+lipsync smoke (NixOS, Godot 4.6 MS-ORT)
+      - name: Godot mel+lipsync smoke (NixOS, store Godot + store ORT)
         if: steps.mel.outputs.run == '1'
         run: |
           set -euo pipefail
-          # Same gate Julian hit: bare `nix develop` GODOT_BIN is still 4.5.1.
-          # Use godot_46_ms_ort + nixos-26.05 godot_4_6 (see julian_vizemes_smoke.sh).
+          # Julian mid 1067 / A/B: nixpkgs godot_4_6 + nixpkgs onnxruntime PASS;
+          # MS ORT under nixpkgs Godot free()s. Keep MS for portable/non-Nix only.
           mkdir -p "$ONNX_LOADER_SCONS_CACHE"
-          # onnx-loader main includes CreateSessionFromArray (PR #26 / stamp …20260830b).
-          ONNX_LOADER_REF="${ONNX_LOADER_REF:-main}"
+          export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
+          # Pin until godot-onnx-loader lands tools/godot_46_nix_store_ort.sh on main.
+          ONNX_LOADER_REF="${ONNX_LOADER_REF:-feat/nix-store-ort-godot46}"
           if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
             git clone --depth 1 --branch "$ONNX_LOADER_REF" --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
           else
@@ -247,22 +248,22 @@ jobs:
           test -f addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/ci-fixture.wav
-          export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
-          (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_ms_ort.sh)
+          (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_nix_store_ort.sh)
           NIXPKGS="${NIXPKGS:-github:nixos/nixpkgs/nixos-26.05}"
-          nix shell "${NIXPKGS}#godot_4_6" "${NIXPKGS}#gcc" --command bash -c '
+          nix shell "${NIXPKGS}#godot_4_6" "${NIXPKGS}#onnxruntime" "${NIXPKGS}#gcc" --command bash -c '
             set -euo pipefail
             G=$(command -v godot4 || command -v godot || true)
             test -n "$G" && test -x "$G"
             export GODOT_BIN="$G"
             export ONNX_LOADER_ROOT="'"$ONNX_LOADER_ROOT"'"
-            unset ONNX_ORT_BIN
+            ORTSO=$(ls -1 /nix/store/*-onnxruntime-*/lib/libonnxruntime.so 2>/dev/null | head -1)
+            test -n "$ORTSO" && test -f "$ORTSO"
+            export ONNX_ORT_BIN="$(dirname "$ORTSO")"
+            export ORT_BUNDLE=0
+            rm -f "'"$GITHUB_WORKSPACE"'/godot-demo/addons/onnx_loader/bin/libonnxruntime.so"*
             export ONNX_LOADER_SKIP_SESSION_RELEASE=1
             cd "'"$GITHUB_WORKSPACE"'"
             bash godot-demo/tools/gdscript_check_only.sh
             bash godot-demo/tools/godot_mel_smoke.sh
-            # Julian mid 993: TCN load_model free(): invalid size under Nix Godot.
-            # Soft for now: matrix below is the diagnostic; keep mel smoke hard.
-            bash godot-demo/tools/run_tcn_load_probe.sh || echo "TCN_PROBE_SOFT_FAIL (see A/B matrix)"
-            bash godot-demo/tools/tcn_nix_ab_matrix.sh
+            bash godot-demo/tools/run_tcn_load_probe.sh
           '
