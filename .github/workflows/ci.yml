@@ -186,6 +186,9 @@ jobs:
       MEL_SCONS_CACHE: /var/tmp/github-runner-cache/scons/vizemes-mel
       ONNX_LOADER_SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
       ONNX_LOADER_ROOT: /var/tmp/github-runner-cache/godot-onnx-loader-src
+      # Match this repository's flake.lock; a moving nixos-26.05 branch changed
+      # the Godot/ORT runtime combination underneath otherwise identical CI.
+      NIXPKGS: github:NixOS/nixpkgs/56c02bc00adcf003215cc4bd996d6efaf4cff188
     steps:
       - uses: actions/checkout@v7
         with:
