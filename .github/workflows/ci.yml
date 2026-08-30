@@ -256,13 +256,13 @@ jobs:
             test -n "$G" && test -x "$G"
             export GODOT_BIN="$G"
             export ONNX_LOADER_ROOT="'"$ONNX_LOADER_ROOT"'"
-            ORTSO=$(ls -1 /nix/store/*-onnxruntime-*/lib/libonnxruntime.so 2>/dev/null | head -1)
-            test -n "$ORTSO" && test -f "$ORTSO"
+            # The loader helper selected and linked one exact ORT store output.
+            # Reuse it; globbing /nix/store can silently select another version.
+            ORTSO=$(readlink -f "$ONNX_LOADER_ROOT/addons/onnx_loader/bin/libonnxruntime.so.1")
+            test -f "$ORTSO"
+            [[ "$ORTSO" == /nix/store/*/lib/libonnxruntime.so* ]]
             export ONNX_ORT_BIN="$(dirname "$ORTSO")"
             export ORT_BUNDLE=0
-            # Symlink store ORT into addon bin for .gdextension [dependencies].
-            ln -sfn "$ORTSO" "'"$GITHUB_WORKSPACE"'/godot-demo/addons/onnx_loader/bin/libonnxruntime.so.1"
-            ln -sfn "$ORTSO" "'"$GITHUB_WORKSPACE"'/godot-demo/addons/onnx_loader/bin/libonnxruntime.so"
             export ONNX_LOADER_SKIP_SESSION_RELEASE=1
             cd "'"$GITHUB_WORKSPACE"'"
             bash godot-demo/tools/gdscript_check_only.sh

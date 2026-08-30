@@ -53,8 +53,9 @@ set -euo pipefail
 G=\$(command -v godot4 || command -v godot || true)
 test -n \"\$G\" && test -x \"\$G\"
 export GODOT_BIN=\"\$G\"
-ORTSO=\$(ls -1 /nix/store/*-onnxruntime-*/lib/libonnxruntime.so 2>/dev/null | head -1)
-test -n \"\$ORTSO\" && test -f \"\$ORTSO\"
+ORTSO=\$(readlink -f $onnx_q/addons/onnx_loader/bin/libonnxruntime.so.1)
+test -f \"\$ORTSO\"
+[[ \"\$ORTSO\" == /nix/store/*/lib/libonnxruntime.so* ]]
 export ONNX_ORT_BIN=\"\$(dirname \"\$ORTSO\")\"
 export ORT_BUNDLE=0
 export ONNX_LOADER_ROOT=$onnx_q

@@ -97,11 +97,12 @@ if command -v nix >/dev/null 2>&1 && [[ -n "${ONNX_LOADER_ROOT:-}" ]]; then
 		set -euo pipefail
 		G=$(command -v godot4 || command -v godot)
 		export GODOT_BIN="$G"
-		ORTSO=$(ls -1 /nix/store/*-onnxruntime-*/lib/libonnxruntime.so 2>/dev/null | head -1 || true)
+		ORTSO=$(readlink -f "$ONNX_LOADER_ROOT/addons/onnx_loader/bin/libonnxruntime.so.1" || true)
 		if [[ -z "$ORTSO" || ! -f "$ORTSO" ]]; then
 			echo "no store ORT .so" >&2
 			exit 3
 		fi
+		[[ "$ORTSO" == /nix/store/*/lib/libonnxruntime.so* ]]
 		export ONNX_ORT_BIN="$(dirname "$ORTSO")"
 		export ONNX_LOADER_ROOT="'"$ONNX_LOADER_ROOT"'"
 		export ONNX_LOADER_SKIP_SESSION_RELEASE=1
