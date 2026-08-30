@@ -30,6 +30,12 @@ const LINE_COLORS: Array[Color] = [
 	Color(0.70, 0.50, 0.30),
 ]
 
+## Source ids for primary/secondary OptionButtons (Julian 947).
+const SRC_TRAIN := 0
+const SRC_MODEL_A := 1
+const SRC_MODEL_B := 2
+const SRC_HIDDEN := 3
+
 var _quit_on_done := true
 var _duration_s := 1.0
 var _hop_s := 0.01
@@ -37,24 +43,22 @@ var _context_frames := 20
 var _names: Array = []
 var _boxes: Array = []
 var _words: Array = [] ## MFA word intervals {start,end,word}
-## Each entry: PackedFloat32Array of length n_visemes (softmax at that hop).
+## Softmax series at each hop (model A / model B / MFA ground-truth).
 var _series: Array = []
-## Optional second ONNX softmax series for A/B compare (same mel contexts).
 var _series_b: Array = []
-var _label_a := "A"
-var _label_b := "B"
-var _show_a := true
-var _show_b := true
+var _series_train: Array = []
+var _label_a := "Model A"
+var _label_b := "Model B"
+var _primary_src := SRC_MODEL_A
+var _secondary_src := SRC_TRAIN
 var _show_disagree := true
 var _show_hard := true
-## When true, top face follows MFA/training expect boxes (quality ceiling), not ONNX A.
-var _face_from_train := false
-## Crossfade width at expect-box boundaries (Julian: explore transition widths).
+## Crossfade width for ground-truth expect transitions.
 var _train_transition_s := 0.06
 var _hard_bytes := PackedByteArray()
 var _hard_frame_s := 0.02
 var _status := ""
-var _help := "wheel=zoom  mid-drag=pan  left-drag=select  Space=play  A/B=models  D=disagree  H=hard  T=train-face  [/]=blend  Esc=clear"
+var _help := "Play/Space  wheel=zoom  mid=pan  left=caret/sel  Esc  Record=mic sample"
 
 var _pcm := PackedFloat32Array()
 var _view_t0 := 0.0
@@ -71,7 +75,9 @@ var _play_i := 0
 var _play_end := 0
 var _playing := false
 
-var _stem_edit: LineEdit
+var _sample_opt: OptionButton
+var _primary_opt: OptionButton
+var _secondary_opt: OptionButton
 var _load_btn: Button
 var _rec_btn: Button
 var _ui_top := 40.0
@@ -80,6 +86,9 @@ var _recording := false
 var _rec_pcm := PackedFloat32Array()
 var _rec_frames_left := 0
 var _rec_seconds := 3.0
+## Sample OptionButton metadata: [{id, label, timeline_json, has_train}]
+var _samples: Array = []
+var _mic_sample_idx := -1
 
 
 func _repo_root() -> String:
@@ -160,20 +169,8 @@ func _feed_face_at_playhead() -> void:
 func _feed_face_at_time(t: float) -> void:
 	if _face == null:
 		return
-	var soft := PackedFloat32Array()
-	if _face_from_train and not _boxes.is_empty():
-		var n_v := _names.size()
-		if n_v <= 0 and not _series.is_empty():
-			n_v = (_series[0] as PackedFloat32Array).size()
-		if n_v <= 0:
-			n_v = LINE_COLORS.size()
-		soft = VisemeUtils.expect_soft_at_time(_boxes, n_v, t, _train_transition_s)
-	elif not _series.is_empty():
-		var t0 := float(_context_frames - 1) * _hop_s
-		var idx := int(round((t - t0) / _hop_s))
-		idx = clampi(idx, 0, _series.size() - 1)
-		soft = _series[idx]
-	else:
+	var soft := _soft_at_time(_primary_src, t)
+	if soft.is_empty():
 		return
 	var ovr := VisemeUtils.mlp_to_ovr(soft, _names)
 	if _face.has_method("set_visemes"):
@@ -182,66 +179,245 @@ func _feed_face_at_time(t: float) -> void:
 		VisemeTarget.feed(_face, ovr)
 
 
+func _series_for_src(src: int) -> Array:
+	match src:
+		SRC_TRAIN:
+			return _series_train
+		SRC_MODEL_A:
+			return _series
+		SRC_MODEL_B:
+			return _series_b
+		_:
+			return []
+
+
+func _soft_at_time(src: int, t: float) -> PackedFloat32Array:
+	if src == SRC_HIDDEN:
+		return PackedFloat32Array()
+	var series := _series_for_src(src)
+	if series.is_empty():
+		return PackedFloat32Array()
+	var t0 := float(_context_frames - 1) * _hop_s
+	var idx := int(round((t - t0) / _hop_s))
+	idx = clampi(idx, 0, series.size() - 1)
+	return series[idx]
+
+
+func _rebuild_train_series() -> void:
+	_series_train.clear()
+	if _boxes.is_empty() or _series.is_empty():
+		return
+	var n_v := _names.size()
+	if n_v <= 0:
+		n_v = (_series[0] as PackedFloat32Array).size()
+	if n_v <= 0:
+		return
+	var t0 := float(_context_frames - 1) * _hop_s
+	for i in _series.size():
+		var t := t0 + float(i) * _hop_s
+		_series_train.append(VisemeUtils.expect_soft_at_time(_boxes, n_v, t, _train_transition_s))
+
+
 func _build_stem_bar() -> void:
-	var bar := HBoxContainer.new()
-	bar.set_anchors_preset(Control.PRESET_TOP_WIDE)
-	bar.offset_left = 8
-	bar.offset_right = -8
-	bar.offset_top = 4
-	bar.offset_bottom = 36
-	bar.add_theme_constant_override("separation", 8)
-	bar.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(bar)
+	var col := VBoxContainer.new()
+	col.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	col.offset_left = 8
+	col.offset_right = -8
+	col.offset_top = 4
+	col.offset_bottom = 72
+	col.add_theme_constant_override("separation", 4)
+	col.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(col)
 
-	var lbl := Label.new()
-	lbl.text = "stem"
-	bar.add_child(lbl)
+	var row1 := HBoxContainer.new()
+	row1.add_theme_constant_override("separation", 8)
+	col.add_child(row1)
+	var row2 := HBoxContainer.new()
+	row2.add_theme_constant_override("separation", 8)
+	col.add_child(row2)
 
-	_stem_edit = LineEdit.new()
-	_stem_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_stem_edit.placeholder_text = ClipProbeIo.DEFAULT_STEM
-	_stem_edit.text = ClipProbeIo.DEFAULT_STEM
-	_stem_edit.text_submitted.connect(func(_t): _on_stem_load())
-	bar.add_child(_stem_edit)
+	var sl := Label.new()
+	sl.text = "sample"
+	row1.add_child(sl)
+	_sample_opt = OptionButton.new()
+	_sample_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_sample_opt.item_selected.connect(_on_sample_selected)
+	row1.add_child(_sample_opt)
 
 	_load_btn = Button.new()
-	_load_btn.text = "Load"
+	_load_btn.text = "Reload"
+	_load_btn.tooltip_text = "Re-export MFA timeline for the selected stem (editor/dev)"
 	_load_btn.pressed.connect(_on_stem_load)
-	bar.add_child(_load_btn)
-
-	var seek_btn := Button.new()
-	seek_btn.text = "Seek table…"
-	seek_btn.tooltip_text = "Side-by-side expect/got + MEL dumps"
-	seek_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://seek_probe.tscn"))
-	bar.add_child(seek_btn)
-
-	var mic_btn := Button.new()
-	mic_btn.text = "Mic live…"
-	mic_btn.tooltip_text = "Full-screen live mic scene"
-	mic_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://mic_lipsync.tscn"))
-	bar.add_child(mic_btn)
+	row1.add_child(_load_btn)
 
 	_rec_btn = Button.new()
 	_rec_btn.text = "Record 3s"
-	_rec_btn.tooltip_text = "Capture mic → replace graph PCM/curves with this clip (no MFA). Load restores the stem sample."
+	_rec_btn.tooltip_text = "Mic → new sample (no ground-truth timeline)"
 	_rec_btn.pressed.connect(_on_record_pressed)
-	bar.add_child(_rec_btn)
+	row1.add_child(_rec_btn)
 
 	var play_btn := Button.new()
 	play_btn.text = "Play"
-	play_btn.tooltip_text = "Play caret ±100ms, or selection range, or visible window"
 	play_btn.pressed.connect(_play_selection)
-	bar.add_child(play_btn)
+	row1.add_child(play_btn)
 
-	_ui_top = 44.0
-	_help = "Play/Space  wheel=zoom  mid=pan  left=caret/sel  Esc  Record replaces graph"
+	var pl := Label.new()
+	pl.text = "primary"
+	row2.add_child(pl)
+	_primary_opt = OptionButton.new()
+	_primary_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_primary_opt.item_selected.connect(_on_primary_selected)
+	row2.add_child(_primary_opt)
+
+	var scl := Label.new()
+	scl.text = "overlay"
+	row2.add_child(scl)
+	_secondary_opt = OptionButton.new()
+	_secondary_opt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_secondary_opt.item_selected.connect(_on_secondary_selected)
+	row2.add_child(_secondary_opt)
+
+	var seek_btn := Button.new()
+	seek_btn.text = "Seek…"
+	seek_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://seek_probe.tscn"))
+	row2.add_child(seek_btn)
+
+	var mic_btn := Button.new()
+	mic_btn.text = "Mic…"
+	mic_btn.pressed.connect(func(): get_tree().change_scene_to_file("res://mic_lipsync.tscn"))
+	row2.add_child(mic_btn)
+
+	_ui_top = 76.0
+	_populate_sample_options()
+	_rebuild_source_options()
+
+
+func _populate_sample_options() -> void:
+	_samples.clear()
+	if _sample_opt == null:
+		return
+	_sample_opt.clear()
+	## Discover baked timeline JSON under the onnxmodels addon.
+	var seen: Dictionary = {}
+	for pack in ["tier-b", "ci-smoke"]:
+		var res_dir := ClipProbeIo.MODELS_RES.path_join(pack)
+		var da := DirAccess.open(res_dir)
+		if da == null:
+			continue
+		da.list_dir_begin()
+		var name := da.get_next()
+		while name != "":
+			if not da.current_is_dir() and name.begins_with("viseme_timeline") and name.ends_with(".json"):
+				var stem := name.trim_prefix("viseme_timeline").trim_prefix("_").trim_suffix(".json")
+				if stem.is_empty() or stem == "vs_smoke":
+					stem = ClipProbeIo.DEFAULT_STEM if name == "viseme_timeline.json" else stem
+				if stem == "vs_smoke":
+					name = da.get_next()
+					continue
+				var key := stem
+				if not seen.has(key):
+					seen[key] = true
+					var path := ClipProbeIo.res_to_abs(res_dir.path_join(name))
+					_samples.append({
+						"id": key,
+						"label": "stem %s" % key,
+						"timeline_json": path,
+						"has_train": true,
+					})
+					_sample_opt.add_item("stem %s" % key, _samples.size() - 1)
+			name = da.get_next()
+		da.list_dir_end()
+	if _samples.is_empty():
+		_samples.append({
+			"id": ClipProbeIo.DEFAULT_STEM,
+			"label": "stem %s" % ClipProbeIo.DEFAULT_STEM,
+			"timeline_json": ClipProbeIo.resolve_timeline_json(),
+			"has_train": true,
+		})
+		_sample_opt.add_item(_samples[0]["label"], 0)
+	_sample_opt.select(0)
+
+
+func _rebuild_source_options() -> void:
+	if _primary_opt == null or _secondary_opt == null:
+		return
+	var has_train := not _boxes.is_empty() and not _series_train.is_empty()
+	var has_b := not _series_b.is_empty()
+	for opt in [_primary_opt, _secondary_opt]:
+		var prev := opt.get_selected_id() if opt.item_count > 0 else SRC_MODEL_A
+		opt.clear()
+		opt.add_item("Ground truth", SRC_TRAIN)
+		opt.set_item_disabled(opt.get_item_index(SRC_TRAIN), not has_train)
+		opt.add_item(_label_a, SRC_MODEL_A)
+		opt.set_item_disabled(opt.get_item_index(SRC_MODEL_A), _series.is_empty())
+		opt.add_item(_label_b if has_b else "Model B (none)", SRC_MODEL_B)
+		opt.set_item_disabled(opt.get_item_index(SRC_MODEL_B), not has_b)
+		opt.add_item("Hidden", SRC_HIDDEN)
+		## Restore previous selection if still enabled.
+		var idx := opt.get_item_index(prev)
+		if idx < 0 or opt.is_item_disabled(idx):
+			idx = opt.get_item_index(SRC_MODEL_A if not _series.is_empty() else SRC_HIDDEN)
+		if idx >= 0:
+			opt.select(idx)
+	_primary_src = _primary_opt.get_selected_id()
+	_secondary_src = _secondary_opt.get_selected_id()
+	if _secondary_opt == _primary_opt:
+		pass
+
+
+func _on_sample_selected(index: int) -> void:
+	if index < 0 or index >= _samples.size():
+		return
+	var sample: Dictionary = _samples[index]
+	if str(sample.get("id", "")) == "mic":
+		## Already have mic pcm/series from Record.
+		_rebuild_source_options()
+		queue_redraw()
+		return
+	var path := str(sample.get("timeline_json", ""))
+	if path.is_empty() or not FileAccess.file_exists(path):
+		_status = "missing timeline for %s" % sample.get("label", "?")
+		queue_redraw()
+		return
+	OS.set_environment("VISEMES_TIMELINE_JSON", path)
+	_stop_playback()
+	_series.clear()
+	_series_b.clear()
+	_series_train.clear()
+	_boxes.clear()
+	_words.clear()
+	var code := _load_and_run()
+	if code != 0:
+		_status = "load failed for %s" % sample.get("label", "?")
+	_rebuild_source_options()
+	queue_redraw()
+	grab_focus()
+
+
+func _on_primary_selected(_index: int) -> void:
+	_primary_src = _primary_opt.get_selected_id()
+	if _playing:
+		_feed_face_at_playhead()
+	elif _sel_t0 >= 0.0:
+		_feed_face_at_time(_sel_t0)
+	else:
+		_feed_face_at_time(_view_t0)
+	queue_redraw()
+
+
+func _on_secondary_selected(_index: int) -> void:
+	_secondary_src = _secondary_opt.get_selected_id()
+	queue_redraw()
 
 
 func _on_stem_load() -> void:
-	var stem := _stem_edit.text.strip_edges()
-	if stem.is_empty():
-		stem = ClipProbeIo.DEFAULT_STEM
-		_stem_edit.text = stem
+	var stem := ClipProbeIo.DEFAULT_STEM
+	if _sample_opt != null and _sample_opt.selected >= 0 and _sample_opt.selected < _samples.size():
+		stem = str(_samples[_sample_opt.selected].get("id", stem))
+	if stem == "mic":
+		_status = "mic sample has no MFA export — pick a training stem"
+		queue_redraw()
+		return
 	_status = "exporting timeline for %s…" % stem
 	queue_redraw()
 	_load_btn.disabled = true
@@ -253,16 +429,14 @@ func _on_stem_load() -> void:
 		queue_redraw()
 		return
 	print(result.get("output", ""))
-	_stop_playback()
-	_series.clear()
-	_series_b.clear()
-	_boxes.clear()
-	_words.clear()
-	var code := _load_and_run()
-	if code != 0:
-		push_error("reload failed after export")
-	queue_redraw()
-	grab_focus()
+	_populate_sample_options()
+	## Reselect stem if present.
+	for i in _samples.size():
+		if str(_samples[i].get("id", "")) == stem:
+			_sample_opt.select(i)
+			_on_sample_selected(i)
+			return
+	_on_sample_selected(0)
 
 
 func _on_resized() -> void:
@@ -324,6 +498,9 @@ func _finish_recording() -> void:
 		_pcm = prev_pcm
 		_status = "record infer failed (graph unchanged) — check MelFrontend/OnnxLoader + model.onnx"
 	else:
+		_boxes.clear()
+		_words.clear()
+		_series_train.clear()
 		_view_t0 = 0.0
 		_view_t1 = _duration_s
 		_sel_t0 = -1.0
@@ -332,8 +509,27 @@ func _finish_recording() -> void:
 			_overlay.clear_selection()
 		_play_i = 0
 		_play_end = 0
+		## Register as a sample option (no ground truth).
+		if _sample_opt != null:
+			## Replace previous mic entry if any.
+			if _mic_sample_idx >= 0 and _mic_sample_idx < _samples.size():
+				_samples.remove_at(_mic_sample_idx)
+			_samples.append({
+				"id": "mic",
+				"label": "mic recording",
+				"timeline_json": "",
+				"has_train": false,
+			})
+			_mic_sample_idx = _samples.size() - 1
+			_sample_opt.clear()
+			for i in _samples.size():
+				_sample_opt.add_item(str(_samples[i].get("label", "?")), i)
+			_sample_opt.select(_mic_sample_idx)
+		_primary_src = SRC_MODEL_A
+		_secondary_src = SRC_HIDDEN
+		_rebuild_source_options()
 		_feed_face_at_time(0.0)
-		_status = "graph = your %.2fs recording (no MFA) — Space plays it; Load restores stem" % _duration_s
+		_status = "mic sample %.2fs (no ground truth) — primary=Model A" % _duration_s
 	queue_redraw()
 	grab_focus()
 
@@ -439,10 +635,8 @@ func _load_and_run() -> int:
 	_names = probe.get("viseme_names", [])
 	_boxes = probe.get("boxes", [])
 	_words = probe.get("words", [])
-	_label_a = str(probe.get("label_a", "A:hidden64"))
-	_label_b = str(probe.get("label_b", "B"))
-	if _stem_edit != null:
-		_stem_edit.text = str(probe.get("stem", ClipProbeIo.DEFAULT_STEM))
+	_label_a = str(probe.get("label_a", "Model A"))
+	_label_b = str(probe.get("label_b", "Model B"))
 
 	var mel = ClassDB.instantiate("MelFrontend")
 	if mel == null:
@@ -501,6 +695,8 @@ func _load_and_run() -> int:
 		push_warning("onnx_b missing: %s" % onnx_b_path)
 
 	_rebuild_hard_bytes()
+	_rebuild_train_series()
+	_rebuild_source_options()
 
 	var t0 := float(_context_frames - 1) * _hop_s
 	var t_end := t0 + float(maxi(0, _series.size() - 1)) * _hop_s
@@ -508,7 +704,7 @@ func _load_and_run() -> int:
 	_view_t0 = 0.0
 	_view_t1 = _duration_s
 
-	_status = "stem=%s win=%d hard=%dB@%.0fms dur=%.2fs A=%s B=%s" % [
+	_status = "stem=%s win=%d hard=%dB@%.0fms dur=%.2fs A=%s B=%s train=%s" % [
 		str(probe.get("stem", "?")),
 		_series.size(),
 		_hard_bytes.size(),
@@ -516,6 +712,7 @@ func _load_and_run() -> int:
 		_duration_s,
 		_label_a,
 		_label_b if not _series_b.is_empty() else "off",
+		"yes" if not _series_train.is_empty() else "no",
 	]
 	print("viseme_timeline %s" % _status)
 	print("GODOT_VISEME_TIMELINE_OK")
@@ -613,7 +810,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var k := event as InputEventKey
 		if k.keycode in [
-			KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_A, KEY_B, KEY_D, KEY_H, KEY_T,
+			KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_D, KEY_H,
 			KEY_BRACKETLEFT, KEY_BRACKETRIGHT
 		]:
 			_handle_key(k)
@@ -640,14 +837,6 @@ func _handle_key(key: InputEventKey) -> void:
 			if _overlay != null:
 				_overlay.queue_redraw()
 			accept_event()
-		KEY_A:
-			_show_a = not _show_a
-			queue_redraw()
-			accept_event()
-		KEY_B:
-			_show_b = not _show_b
-			queue_redraw()
-			accept_event()
 		KEY_D:
 			_show_disagree = not _show_disagree
 			queue_redraw()
@@ -656,49 +845,20 @@ func _handle_key(key: InputEventKey) -> void:
 			_show_hard = not _show_hard
 			queue_redraw()
 			accept_event()
-		KEY_T:
-			if _boxes.is_empty():
-				_status = "T: no MFA/training boxes (Load a stem, or face stays on model A)"
-			else:
-				_face_from_train = not _face_from_train
-				_status = (
-					"face=training expect (blend %.0fms) — play to compare ceiling"
-					% (_train_transition_s * 1000.0)
-					if _face_from_train
-					else "face=model A"
-				)
-				if _playing:
-					_feed_face_at_playhead()
-				elif _sel_t0 >= 0.0:
-					_feed_face_at_time(_sel_t0)
-				else:
-					_feed_face_at_time(_view_t0)
-			queue_redraw()
-			accept_event()
 		KEY_BRACKETLEFT:
 			_train_transition_s = clampf(_train_transition_s - 0.01, 0.0, 0.25)
-			_status = "train blend %.0fms%s" % [
-				_train_transition_s * 1000.0,
-				" (face=train)" if _face_from_train else ""
-			]
-			if _face_from_train:
-				if _playing:
-					_feed_face_at_playhead()
-				elif _sel_t0 >= 0.0:
-					_feed_face_at_time(_sel_t0)
+			_rebuild_train_series()
+			_status = "train blend %.0fms" % (_train_transition_s * 1000.0)
+			if _primary_src == SRC_TRAIN:
+				_feed_face_at_time(_sel_t0 if _sel_t0 >= 0.0 else _view_t0)
 			queue_redraw()
 			accept_event()
 		KEY_BRACKETRIGHT:
 			_train_transition_s = clampf(_train_transition_s + 0.01, 0.0, 0.25)
-			_status = "train blend %.0fms%s" % [
-				_train_transition_s * 1000.0,
-				" (face=train)" if _face_from_train else ""
-			]
-			if _face_from_train:
-				if _playing:
-					_feed_face_at_playhead()
-				elif _sel_t0 >= 0.0:
-					_feed_face_at_time(_sel_t0)
+			_rebuild_train_series()
+			_status = "train blend %.0fms" % (_train_transition_s * 1000.0)
+			if _primary_src == SRC_TRAIN:
+				_feed_face_at_time(_sel_t0 if _sel_t0 >= 0.0 else _view_t0)
 			queue_redraw()
 			accept_event()
 
@@ -825,10 +985,12 @@ func _draw() -> void:
 	var curve_h := _plot.size.y * 0.68
 	var n_v := _n_visemes()
 	var t0 := float(_context_frames - 1) * _hop_s
-	if _show_a:
-		_draw_series_curves(_series, t0, n_v, curve_top, curve_h, 2.0, 1.0)
-	if _show_b and not _series_b.is_empty():
-		_draw_series_curves(_series_b, t0, n_v, curve_top, curve_h, 1.2, 0.55)
+	var pri := _series_for_src(_primary_src)
+	var sec := _series_for_src(_secondary_src)
+	if not pri.is_empty():
+		_draw_series_curves(pri, t0, n_v, curve_top, curve_h, 2.0, 1.0)
+	if not sec.is_empty() and _secondary_src != _primary_src:
+		_draw_series_curves(sec, t0, n_v, curve_top, curve_h, 1.2, 0.55)
 
 	_draw_time_axis(curve_top, curve_h)
 	_draw_legend(n_v)
@@ -1015,32 +1177,38 @@ func _draw_legend(n_v: int) -> void:
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 12, Color(0.85, 0.85, 0.9)
 		)
 	var foot := ly + float(n_v) * 18.0 + 10.0
+	var pri_name := _src_label(_primary_src)
+	var sec_name := _src_label(_secondary_src)
 	draw_string(
 		ThemeDB.fallback_font, Vector2(lx, foot),
-		("%s%s" % ["● " if _show_a else "○ ", _label_a]),
+		"● primary: %s" % pri_name,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.9, 0.9, 0.95)
 	)
-	var face_y := foot + 16.0
-	if not _series_b.is_empty():
+	draw_string(
+		ThemeDB.fallback_font, Vector2(lx, foot + 16.0),
+		"○ overlay: %s" % sec_name,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.8, 0.9)
+	)
+	if _show_disagree and not _series_b.is_empty():
 		draw_string(
-			ThemeDB.fallback_font, Vector2(lx, face_y),
-			("%s%s" % ["● " if _show_b else "○ ", _label_b]),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.75, 0.8, 0.9)
-		)
-		face_y += 16.0
-		draw_string(
-			ThemeDB.fallback_font, Vector2(lx, face_y),
-			("%sdisagree" % ["● " if _show_disagree else "○ "]),
+			ThemeDB.fallback_font, Vector2(lx, foot + 32.0),
+			("%sdisagree A/B" % ["● " if _show_disagree else "○ "]),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.45)
 		)
-		face_y += 16.0
-	var face_src := "face:train %.0fms" % (_train_transition_s * 1000.0) if _face_from_train else "face:model A"
-	draw_string(
-		ThemeDB.fallback_font, Vector2(lx, face_y),
-		("%s%s" % ["● " if _face_from_train else "○ ", face_src]),
-		HORIZONTAL_ALIGNMENT_LEFT, -1, 11,
-		Color(0.55, 0.95, 0.65) if _face_from_train else Color(0.65, 0.7, 0.75)
-	)
+
+
+func _src_label(src: int) -> String:
+	match src:
+		SRC_TRAIN:
+			return "Ground truth"
+		SRC_MODEL_A:
+			return _label_a
+		SRC_MODEL_B:
+			return _label_b
+		SRC_HIDDEN:
+			return "Hidden"
+		_:
+			return "?"
 
 
 func _draw_series_curves(
