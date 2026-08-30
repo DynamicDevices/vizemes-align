@@ -39,6 +39,20 @@ if [[ -n "${ONNX_LOADER_ROOT:-}" && -f "${ONNX_LOADER_ROOT}/build/libonnx_runtim
 	echo "host_tcn_create exit=$host_rc"
 fi
 
+# Once Godot has mapped libstdc++.so.6, dlopen(ORT) reuses it (RPATH cannot
+# replace). Prefer preloading the same gcc runtime we bundled beside ORT.
+if [[ -z "${LD_PRELOAD:-}" && -d /nix/store ]]; then
+	_preload=()
+	_bin="$ROOT/addons/onnx_loader/bin"
+	[[ -f "$_bin/libstdc++.so.6" ]] && _preload+=("$_bin/libstdc++.so.6")
+	[[ -f "$_bin/libgcc_s.so.1" ]] && _preload+=("$_bin/libgcc_s.so.1")
+	if [[ ${#_preload[@]} -gt 0 ]]; then
+		export LD_PRELOAD
+		LD_PRELOAD="$(IFS=:; echo "${_preload[*]}")${LD_PRELOAD:+:$LD_PRELOAD}"
+		echo "run_tcn_load_probe: LD_PRELOAD=$LD_PRELOAD"
+	fi
+fi
+
 set +e
 "$GODOT" --headless --path . --script res://tools/tcn_load_probe.gd >"$OUT" 2>&1
 rc=$?
