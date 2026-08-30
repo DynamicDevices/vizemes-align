@@ -258,4 +258,8 @@ jobs:
             cd "'"$GITHUB_WORKSPACE"'"
             bash godot-demo/tools/gdscript_check_only.sh
             bash godot-demo/tools/godot_mel_smoke.sh
+            # Julian mid 993: TCN load_model free(): invalid size under Nix Godot.
+            "$G" --headless --path godot-demo --script res://tools/tcn_load_probe.gd 2>&1 | tee /tmp/vizemes-tcn-load-probe.txt
+            grep -q GODOT_TCN_LOAD_PROBE_OK /tmp/vizemes-tcn-load-probe.txt
+            ! grep -qE 'free\\(\\): invalid size|Aborted' /tmp/vizemes-tcn-load-probe.txt
           '
