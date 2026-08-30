@@ -16,6 +16,14 @@ res://addons/onnx_loader/onnx_loader.gdextension
 res://addons/vizemes_mel/vizemes_mel.gdextension
 EOF
 fi
+
+# Host path first (same ORT .so) — splits Godot-only vs ORT/Nix.
+if [[ -n "${ONNX_LOADER_ROOT:-}" && -f "${ONNX_LOADER_ROOT}/build/libonnx_runtime.a" ]]; then
+	echo "=== host CreateSession TCN (no Godot) ==="
+	bash "$ROOT/tools/host_tcn_create.sh" \
+		"$ROOT/addons/vizeme-onnxmodels/tier-b-tcn/model_final.onnx"
+fi
+
 set +e
 "$GODOT" --headless --path . --script res://tools/tcn_load_probe.gd >"$OUT" 2>&1
 rc=$?

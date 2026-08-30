@@ -253,6 +253,7 @@ jobs:
             G=$(command -v godot4 || command -v godot || true)
             test -n "$G" && test -x "$G"
             export GODOT_BIN="$G"
+            export ONNX_LOADER_ROOT="'"$ONNX_LOADER_ROOT"'"
             unset ONNX_ORT_BIN
             export ONNX_LOADER_SKIP_SESSION_RELEASE=1
             cd "'"$GITHUB_WORKSPACE"'"
