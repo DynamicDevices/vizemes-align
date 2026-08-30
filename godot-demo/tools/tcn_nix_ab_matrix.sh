@@ -42,20 +42,22 @@ OFFICIAL_DIR="$OUT_DIR/official-godot"
 OFFICIAL_BIN="$OFFICIAL_DIR/Godot_v4.6.1-stable_linux.x86_64"
 if [[ ! -x "$OFFICIAL_BIN" ]]; then
 	mkdir -p "$OFFICIAL_DIR"
-	curl -fsSL "$OFFICIAL_URL" -o "$OUT_DIR/godot-official.zip"
-	unzip -o -q "$OUT_DIR/godot-official.zip" -d "$OFFICIAL_DIR"
-	chmod +x "$OFFICIAL_BIN"
-fi
-OFFICIAL_WRAP=(env)
-if command -v nix >/dev/null 2>&1; then
-	if nix shell "${NIXPKGS}#steam-run" -c true 2>/dev/null; then
-		OFFICIAL_WRAP=(nix shell "${NIXPKGS}#steam-run" -c steam-run)
+	if ! nix shell "${NIXPKGS}#curl" "${NIXPKGS}#unzip" --command bash -c '
+		set -euo pipefail
+		curl -fsSL "'"$OFFICIAL_URL"'" -o "'"$OUT_DIR"'/godot-official.zip"
+		unzip -o -q "'"$OUT_DIR"'/godot-official.zip" -d "'"$OFFICIAL_DIR"'"
+	'; then
+		echo "RESULT official_godot_ms_ort FAIL download"
+	fi
+	if [[ -f "$OFFICIAL_BIN" ]]; then
+		chmod +x "$OFFICIAL_BIN"
 	fi
 fi
+if [[ -x "$OFFICIAL_BIN" ]]; then
 (
 	export GODOT_BIN="$OFFICIAL_BIN"
-	# When using steam-run, wrap the probe's godot invocation via GODOT_BIN that is a small shim.
-	if [[ "${OFFICIAL_WRAP[0]}" == nix ]]; then
+	# steam-run shim when available
+	if nix shell "${NIXPKGS}#steam-run" -c true 2>/dev/null; then
 		SHIM="$OUT_DIR/godot-official-shim.sh"
 		cat >"$SHIM" <<EOF
 #!/usr/bin/env bash
@@ -76,6 +78,9 @@ elif grep -Fq 'GODOT_TCN_LOAD_PROBE_OK' "$OUT_DIR/official_godot_ms_ort.txt"; th
 else
 	echo "RESULT official_godot_ms_ort FAIL other"
 	tail -n 15 "$OUT_DIR/official_godot_ms_ort.txt" || true
+fi
+else
+	echo "RESULT official_godot_ms_ort SKIP no-binary"
 fi
 
 # 3) nixpkgs Godot + store ORT — hide bundled MS copy so ONNX_ORT_BIN wins.
