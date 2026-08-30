@@ -83,7 +83,8 @@ var _rec_seconds := 3.0
 
 
 func _repo_root() -> String:
-	return ClipProbeIo.repo_root()
+	## Editor/dev only (python exporters). Runtime I/O stays under res://addons/….
+	return ClipProbeIo.project_abs().get_base_dir()
 
 
 func _is_headless() -> bool:
@@ -338,44 +339,11 @@ func _finish_recording() -> void:
 
 
 func _default_model_paths() -> Dictionary:
-	## Prefer onnxmodels/ then export/tier-b*; ci-smoke last. JSON optional.
-	## Allows TCN dirs when loader supports predict_shaped.
-	var root := _repo_root()
-	var demo := ProjectSettings.globalize_path("res://")
-	var candidates: Array[String] = [
-		demo.path_join("onnxmodels/tier-b-tcn"),
-		demo.path_join("onnxmodels/tier-b"),
-		root.path_join("export/tier-b-tcn"),
-		root.path_join("export/tier-b"),
-		root.path_join("export/ci-smoke"),
-	]
-	var env := OS.get_environment("VISEMES_MODEL_DIR")
-	if not env.is_empty():
-		var abs_env := env if env.is_absolute_path() else root.path_join(env)
-		candidates.push_front(abs_env)
-	for dir in candidates:
-		var onnx := ""
-		for name in ["model.onnx", "model_final.onnx"]:
-			var p := dir.path_join(name)
-			if FileAccess.file_exists(p):
-				onnx = p
-				break
-		if onnx.is_empty():
-			continue
-		var json_path := ""
-		for jn in ["model.json", "model_final.json"]:
-			var jp := dir.path_join(jn)
-			if FileAccess.file_exists(jp):
-				json_path = jp
-				break
-		var is_tcn := dir.contains("tier-b-tcn") or onnx.contains("tcn")
-		return {"onnx": onnx, "json": json_path, "dir": dir, "tcn": is_tcn}
-	return {
-		"onnx": root.path_join("export/ci-smoke/model.onnx"),
-		"json": root.path_join("export/ci-smoke/model.json"),
-		"dir": root.path_join("export/ci-smoke"),
-		"tcn": false,
-	}
+	## Models only from res://addons/vizeme-onnxmodels (Julian 944).
+	var paths := ClipProbeIo.resolve_model_paths(true)
+	if str(paths.get("onnx", "")).is_empty():
+		paths = ClipProbeIo.resolve_model_paths(false)
+	return paths
 
 
 func _infer_from_pcm() -> int:
@@ -437,26 +405,13 @@ func _setup_audio() -> void:
 
 
 func _timeline_probe_path() -> String:
-	var root := _repo_root()
-	var env := OS.get_environment("VISEMES_TIMELINE_JSON")
-	if not env.is_empty():
-		return env if env.is_absolute_path() else root.path_join(env)
-	var demo := ProjectSettings.globalize_path("res://")
-	for p in [
-		demo.path_join("onnxmodels/tier-b/viseme_timeline.json"),
-		root.path_join("export/tier-b/viseme_timeline.json"),
-		ClipProbeIo.resolve_model_dir().path_join("viseme_timeline.json"),
-	]:
-		if FileAccess.file_exists(p):
-			return p
-	return root.path_join("export/ci-smoke/viseme_timeline.json")
+	return ClipProbeIo.resolve_timeline_json()
 
 
 func _load_and_run() -> int:
-	var root := _repo_root()
 	var path := _timeline_probe_path()
-	if not FileAccess.file_exists(path):
-		_status = "missing viseme_timeline.json — run: python3 scripts/export_viseme_timeline.py"
+	if path.is_empty() or not FileAccess.file_exists(path):
+		_status = "missing viseme_timeline.json under res://addons/vizeme-onnxmodels — run scripts/sync_vizeme_onnxmodels.sh"
 		push_error(_status)
 		return 1
 
@@ -467,10 +422,17 @@ func _load_and_run() -> int:
 		push_error(_status)
 		return 1
 
-	var json_path := root.path_join(str(probe.get("model_json", "export/ci-smoke/model.json")))
-	var onnx_path := root.path_join(str(probe.get("onnx", "export/ci-smoke/model.onnx")))
-	var onnx_b_rel := str(probe.get("onnx_b", ""))
-	var wav_path := root.path_join(str(probe["wav"]))
+	## Ignore repo-relative onnx/wav in the probe — resolve inside the Godot project.
+	var model_paths := _default_model_paths()
+	var onnx_path := str(model_paths.get("onnx", ""))
+	var json_path := str(model_paths.get("json", ""))
+	var onnx_b_path := ""
+	var model_dir := str(model_paths.get("dir", ""))
+	if not model_dir.is_empty():
+		var cand_b := model_dir.path_join("model_10m.onnx")
+		if FileAccess.file_exists(cand_b):
+			onnx_b_path = cand_b
+	var wav_path := ClipProbeIo.resolve_wav_for_probe(probe)
 	_hop_s = float(probe.get("hop_s", 0.01))
 	_duration_s = float(probe.get("duration_s", 1.0))
 	_context_frames = int(probe.get("context_frames", 20))
@@ -493,8 +455,8 @@ func _load_and_run() -> int:
 		_status = "OnnxLoader missing"
 		push_error(_status)
 		return 1
-	if not loader.load_model(onnx_path):
-		_status = "OnnxLoader load_model failed"
+	if onnx_path.is_empty() or not loader.load_model(onnx_path):
+		_status = "OnnxLoader load_model failed (%s)" % onnx_path
 		push_error(_status)
 		return 1
 	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
@@ -507,6 +469,10 @@ func _load_and_run() -> int:
 	elif _names.is_empty() and FileAccess.file_exists(json_path):
 		_names = VisemeUtils.load_id_to_name(json_path)
 
+	if wav_path.is_empty():
+		_status = "missing wav under res://addons/vizeme-onnxmodels/fixtures"
+		push_error(_status)
+		return 1
 	_pcm = VisemeUtils.load_wav_pcm(wav_path)
 	if _pcm.is_empty():
 		_status = "empty wav"
@@ -523,18 +489,16 @@ func _load_and_run() -> int:
 		return 1
 
 	_series_b.clear()
-	if not onnx_b_rel.is_empty():
-		var onnx_b_path := root.path_join(onnx_b_rel)
-		if FileAccess.file_exists(onnx_b_path):
-			var loader_b = ClassDB.instantiate("OnnxLoader")
-			if loader_b != null and loader_b.load_model(onnx_b_path):
-				_series_b = _predict_series(loader_b, contexts)
-				if _label_b == "B":
-					_label_b = "B:%s" % onnx_b_rel.get_file()
-			else:
-				push_warning("onnx_b failed to load: %s" % onnx_b_path)
+	if not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
+		var loader_b = ClassDB.instantiate("OnnxLoader")
+		if loader_b != null and loader_b.load_model(onnx_b_path):
+			_series_b = _predict_series(loader_b, contexts)
+			if _label_b == "B":
+				_label_b = "B:%s" % onnx_b_path.get_file()
 		else:
-			push_warning("onnx_b missing: %s" % onnx_b_path)
+			push_warning("onnx_b failed to load: %s" % onnx_b_path)
+	elif not onnx_b_path.is_empty():
+		push_warning("onnx_b missing: %s" % onnx_b_path)
 
 	_rebuild_hard_bytes()
 

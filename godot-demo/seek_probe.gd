@@ -160,12 +160,14 @@ func _mel_l2(a: PackedFloat32Array, b: Array) -> float:
 
 
 func _run_probe() -> int:
-	var root := ClipProbeIo.repo_root()
 	var probe_path := OS.get_environment("SEEK_PROBE_JSON").strip_edges()
 	if probe_path.is_empty():
-		probe_path = root.path_join("export/ci-smoke/seek_probe.json")
-	if not FileAccess.file_exists(probe_path):
-		_set_status("missing seek_probe.json — Load a stem or run export_seek_probe.py")
+		probe_path = ClipProbeIo.models_abs().path_join("ci-smoke/seek_probe.json")
+	elif not probe_path.is_absolute_path():
+		probe_path = ClipProbeIo.project_abs().path_join(probe_path)
+	if not probe_path.begins_with(ClipProbeIo.project_abs()) \
+			or not FileAccess.file_exists(probe_path):
+		_set_status("missing seek_probe.json under res://addons/vizeme-onnxmodels — Load a stem or sync")
 		push_error(_status.text)
 		return 1
 
@@ -179,9 +181,10 @@ func _run_probe() -> int:
 	_last_probe = probe
 	_stem_edit.text = str(probe.get("stem", ClipProbeIo.DEFAULT_STEM))
 
-	var json_path := root.path_join(str(probe.get("model_json", "export/ci-smoke/model.json")))
-	var onnx_path := root.path_join(str(probe.get("onnx", "export/ci-smoke/model.onnx")))
-	var wav_path := root.path_join(str(probe["wav"]))
+	var model_paths := ClipProbeIo.resolve_model_paths(false)
+	var json_path := str(model_paths.get("json", ""))
+	var onnx_path := str(model_paths.get("onnx", ""))
+	var wav_path := ClipProbeIo.resolve_wav_for_probe(probe)
 	var mel_l2_max := float(probe.get("mel_l2_max", 0.05))
 	var seeks: Array = probe.get("seeks", [])
 

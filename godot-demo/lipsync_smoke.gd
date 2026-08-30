@@ -7,10 +7,10 @@ const VisemeTarget := preload("res://viseme_target.gd")
 
 
 func _ready() -> void:
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	var json_path := root.path_join("export/ci-smoke/model.json")
-	var onnx_path := root.path_join("export/ci-smoke/model.onnx")
-	var wav_path := root.path_join("export/ci-smoke/ci-fixture.wav")
+	var paths := ClipProbeIo.resolve_model_paths(false)
+	var json_path := str(paths.get("json", ""))
+	var onnx_path := str(paths.get("onnx", ""))
+	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
 
 	var pipe = VisemePipelineScript.new()
 	if not pipe.setup(json_path, onnx_path):

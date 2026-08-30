@@ -11,7 +11,15 @@ Uses **godot-onnx-loader** and **vizemes MelFrontend** via symlinks (not vendore
   godot-demo/
     addons/onnx_loader -> ../../../godot-onnx-loader/addons/onnx_loader
     addons/vizemes_mel -> ../../addons/vizemes_mel
-  export/ci-smoke/                      # ONNX + CSV + ci-fixture.wav
+    addons/vizeme-onnxmodels/           # ONNX packs + wav fixtures (res:// only)
+  export/                               # training outputs; sync into the addon
+```
+
+Runtime stays inside the Godot project (`res://addons/vizeme-onnxmodels`). After
+training or downloading models:
+
+```bash
+bash scripts/sync_vizeme_onnxmodels.sh
 ```
 
 ## Build addons

@@ -11,17 +11,22 @@ func _ready() -> void:
 	if not ClassDB.class_exists("MelAudioEffect"):
 		push_error("MelAudioEffect missing — rebuild vizemes_mel")
 		return
-	var root := ProjectSettings.globalize_path("res://").get_base_dir().get_base_dir()
-	var json_path := root.path_join("export/ci-smoke/model.json")
+	var paths := ClipProbeIo.resolve_model_paths(false)
+	var onnx_path := str(paths.get("onnx", ""))
+	var json_path := str(paths.get("json", ""))
 	_fx = ClassDB.instantiate("MelAudioEffect")
 	var mel = _fx.get_mel_frontend()
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
+	var loader = ClassDB.instantiate("OnnxLoader")
+	if loader == null or onnx_path.is_empty() or not loader.load_model(onnx_path):
+		push_error("OnnxLoader / model missing under res://addons/vizeme-onnxmodels")
+		return
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
 		push_error("configure failed")
 		return
 	mel.begin_stream()
 	var idx := AudioServer.get_bus_index("Master")
 	AudioServer.add_bus_effect(idx, _fx)
-	print("mel_audio_effect_print: MelAudioEffect on Master — play audio / use mic into bus")
+	print("mel_audio_effect_print: MelAudioEffect on Master — play audio / use mic into bus (%s)" % onnx_path)
 
 
 func _process(_dt: float) -> void:
