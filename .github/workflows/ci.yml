@@ -235,8 +235,8 @@ jobs:
           # MS ORT under nixpkgs Godot free()s. Keep MS for portable/non-Nix only.
           mkdir -p "$ONNX_LOADER_SCONS_CACHE"
           export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
-          # Pin until godot-onnx-loader lands tools/godot_46_nix_store_ort.sh on main.
-          ONNX_LOADER_REF="${ONNX_LOADER_REF:-feat/nix-store-ort-godot46}"
+          # onnx-loader main: tools/godot_46_nix_store_ort.sh (PR #30).
+          ONNX_LOADER_REF="${ONNX_LOADER_REF:-main}"
           if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
             git clone --depth 1 --branch "$ONNX_LOADER_REF" --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
           else
