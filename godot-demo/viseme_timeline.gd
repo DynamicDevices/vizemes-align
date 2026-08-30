@@ -343,7 +343,7 @@ func _rebuild_source_options() -> void:
 		return
 	var has_train := not _boxes.is_empty() and not _series_train.is_empty()
 	var has_b := not _series_b.is_empty()
-	for opt in [_primary_opt, _secondary_opt]:
+	for opt: OptionButton in [_primary_opt, _secondary_opt]:
 		var prev: int = SRC_MODEL_A
 		if opt.item_count > 0:
 			prev = opt.get_selected_id()
@@ -356,7 +356,7 @@ func _rebuild_source_options() -> void:
 		opt.set_item_disabled(opt.get_item_index(SRC_MODEL_B), not has_b)
 		opt.add_item("Hidden", SRC_HIDDEN)
 		## Restore previous selection if still enabled.
-		var idx := opt.get_item_index(prev)
+		var idx: int = opt.get_item_index(prev)
 		if idx < 0 or opt.is_item_disabled(idx):
 			idx = opt.get_item_index(SRC_MODEL_A if not _series.is_empty() else SRC_HIDDEN)
 		if idx >= 0:
