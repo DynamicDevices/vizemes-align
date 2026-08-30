@@ -32,7 +32,7 @@ echo "=== OnnxLoader Godot 4.6 + nixpkgs ORT (csv proof) ==="
 cd "$ONNX"
 bash tools/godot_46_nix_store_ort.sh
 ln -sfn "$ONNX/addons/onnx_loader" "$ROOT/godot-demo/addons/onnx_loader"
-rm -f "$ROOT/godot-demo/addons/onnx_loader/bin/libonnxruntime.so"*
+# Keep store ORT symlinks from godot_46_nix_store_ort.sh (do not rm).
 
 echo "=== GDScript --check-only (editor parse footguns) ==="
 root_q=$(printf '%q' "$ROOT")
