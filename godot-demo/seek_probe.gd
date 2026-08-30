@@ -171,9 +171,9 @@ func _run_probe() -> int:
 				probe_res = cand
 				break
 	elif not probe_res.begins_with("res://") and not probe_res.begins_with("user://"):
-		## Absolute override must still sit under the project.
+		## Absolute/env override: prefer in-project; allow existing host path for CI/dev.
 		var abs_p := probe_res if probe_res.is_absolute_path() else ClipProbeIo.project_abs().path_join(probe_res)
-		if abs_p.begins_with(ClipProbeIo.project_abs()) and FileAccess.file_exists(abs_p):
+		if FileAccess.file_exists(abs_p):
 			probe_res = abs_p
 		else:
 			probe_res = ""
