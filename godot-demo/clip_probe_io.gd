@@ -54,7 +54,7 @@ static func run_python(script_rel: String, args: PackedStringArray) -> Dictionar
 
 
 static func _onnx_in_dir(dir_abs: String) -> String:
-	for name in ["model_final.onnx", "model.onnx"]:
+	for name in ["model_final.onnx", "model.onnx", "phone.onnx"]:
 		var p := dir_abs.path_join(name)
 		if FileAccess.file_exists(p):
 			return p
@@ -126,6 +126,16 @@ static func resolve_ci_smoke_paths() -> Dictionary:
 
 
 static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
+	var override_dir := resolve_model_dir()
+	if not OS.get_environment("VISEMES_MODEL_DIR").is_empty():
+		var override_onnx := _onnx_in_dir(override_dir)
+		if not override_onnx.is_empty():
+			return {
+				"onnx": override_onnx,
+				"dir": override_dir,
+				"tcn": false, # caller confirms architecture from ONNX metadata
+				"id": override_dir.get_file(),
+			}
 	var packs := list_model_packs()
 	var order: Array[String] = []
 	if prefer_tcn:
@@ -153,6 +163,20 @@ static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 			"id": id,
 		}
 	return {"onnx": "", "dir": "", "tcn": false, "id": ""}
+
+
+static func resolve_optional_model_env(env_name: String) -> Dictionary:
+	## Explicit A/B pack override, constrained to the distributable project tree.
+	var raw := OS.get_environment(env_name)
+	if raw.is_empty():
+		return {}
+	var model_dir := raw if raw.is_absolute_path() else project_abs().path_join(raw)
+	if not model_dir.begins_with(project_abs()):
+		return {}
+	var onnx := _onnx_in_dir(model_dir)
+	if onnx.is_empty():
+		return {}
+	return {"onnx": onnx, "dir": model_dir, "id": model_dir.get_file()}
 
 
 static func resolve_timeline_json() -> String:

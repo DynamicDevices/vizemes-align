@@ -678,6 +678,8 @@ func _load_and_run() -> int:
 	var model_paths: Dictionary = loaded["paths"]
 	var onnx_path := str(model_paths.get("onnx", ""))
 	var use_tcn := bool(model_paths.get("tcn", false))
+	if not use_tcn and loader.has_method("get_metadata_value"):
+		use_tcn = str(loader.get_metadata_value("vizemes_model")).contains("tcn")
 	var onnx_b_path := ""
 	var model_dir := str(model_paths.get("dir", ""))
 	if not model_dir.is_empty():
@@ -729,7 +731,24 @@ func _load_and_run() -> int:
 		return 1
 
 	_series_b.clear()
-	if not use_tcn and not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
+	var explicit_b: Dictionary = ClipProbeIo.resolve_optional_model_env("VISEMES_MODEL_B_DIR")
+	if not explicit_b.is_empty():
+		var loader_b = ClassDB.instantiate("OnnxLoader")
+		var mel_b = ClassDB.instantiate("MelFrontend")
+		var path_b := str(explicit_b.get("onnx", ""))
+		if loader_b != null and mel_b != null and loader_b.load_model(path_b):
+			if VisemeUtils.configure_mel_from_onnx(mel_b, loader_b):
+				var model_b := str(loader_b.get_metadata_value("vizemes_model"))
+				if model_b.contains("tcn"):
+					_series_b = _predict_series_tcn(loader_b, mel_b, _pcm)
+				else:
+					_series_b = _predict_series(loader_b, mel_b.build_utterance_contexts(_pcm))
+				_label_b = "B:%s" % model_b
+			else:
+				push_warning("secondary model Mel contract failed: %s" % path_b)
+		else:
+			push_warning("secondary model failed to load: %s" % path_b)
+	elif not use_tcn and not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
 		var loader_b = ClassDB.instantiate("OnnxLoader")
 		if loader_b != null and loader_b.load_model(onnx_b_path):
 			var contexts_b: Array = mel.build_utterance_contexts(_pcm)

@@ -86,6 +86,38 @@ boundary error from 1.28 s to 4.45 s. This is not the final ten-minute model
 result; it is evidence that the deterministic mapper remains the baseline until
 the full controlled run and Godot review.
 
+## Controlled ten-minute result
+
+The final common evaluator uses the same 262 held-out utterances (190,492 Mel
+frames) and the same MFA-phone-to-viseme reference for both paths. Both acoustic
+models used 128 channels, five causal TCN layers and a 600-second training
+budget. The direct model has 505,103 parameters; the phone model has 266,949.
+
+| Metric | Direct viseme TCN | Phone TCN + deterministic table |
+|---|---:|---:|
+| Viseme frame accuracy | 0.4859 | 0.5237 |
+| Boundary mean absolute error | 2564 ms | 424 ms |
+| Boundary p95 absolute error | 7510 ms | 1380 ms |
+| Transition ratio (ideal 1.0) | 2.179 | 0.994 |
+| Excess transition jitter | 11.27 Hz | 0.00 Hz |
+| Algorithmic lookahead | 50 ms | 0 ms |
+| CPU real-time factor, sessions preloaded | 0.00113 | 0.00453 |
+
+The phone model's raw stress-collapsed PER is still 2.10, so this is evidence
+for the final visual mapping, not a claim of production-quality speech
+recognition. Reproduce the common comparison with:
+
+```sh
+python3 scripts/eval_direct_phone_ab.py \
+  --direct-onnx godot-demo/addons/vizeme-onnxmodels/tier-b-tcn/model_final.onnx \
+  --phone-onnx godot-demo/addons/vizeme-onnxmodels/tier-c/model_final.onnx \
+  --output docs/benchmarks/direct_phone_ab.json
+```
+
+The checked-in JSON is the exact report. Godot's headless timeline has loaded
+both models over the same clip and printed `GODOT_VISEME_TIMELINE_OK`; Julian's
+visual/manual preference is the remaining acceptance gate.
+
 [mfa-paper]: https://montreal-forced-aligner.readthedocs.io/en/v3.3.0/_downloads/998b0c31eadaf048e8e3de805b9ef8e6/MFA_paper_Interspeech2017.pdf
 [mfa-config]: https://montreal-forced-aligner.readthedocs.io/en/v3.2.3/user_guide/configuration/acoustic_modeling.html
 [mfa-model]: https://montreal-forced-aligner.readthedocs.io/en/stable/reference/acoustic_modeling/index.html
