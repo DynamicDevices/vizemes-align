@@ -305,6 +305,24 @@ func _populate_sample_options() -> void:
 	_sample_opt.clear()
 	## Discover baked timeline JSON under the onnxmodels addon.
 	var seen: Dictionary = {}
+	# Keep an explicitly selected timeline visible in the dropdown, including
+	# packs outside the normal tier-b / ci-smoke discovery set.
+	var active_path := ClipProbeIo.resolve_timeline_json()
+	if not active_path.is_empty():
+		var active_file := FileAccess.open(active_path, FileAccess.READ)
+		if active_file != null:
+			var active_probe: Variant = JSON.parse_string(active_file.get_as_text())
+			if typeof(active_probe) == TYPE_DICTIONARY:
+				var active_stem := str((active_probe as Dictionary).get("stem", ""))
+				if not active_stem.is_empty():
+					seen[active_stem] = true
+					_samples.append({
+						"id": active_stem,
+						"label": "stem %s" % active_stem,
+						"timeline_json": active_path,
+						"has_train": true,
+					})
+					_sample_opt.add_item("stem %s" % active_stem, _samples.size() - 1)
 	for pack in ["tier-b", "ci-smoke"]:
 		var res_dir := ClipProbeIo.MODELS_RES.path_join(pack)
 		var da := DirAccess.open(res_dir)
