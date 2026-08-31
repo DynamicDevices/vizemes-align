@@ -9,9 +9,9 @@ For downloading and running already-built checkpoints, see [MODELS.md](MODELS.md
 2. Montreal Forced Aligner (MFA) → phone TextGrids  
 3. Phonemes → 15 coded visemes (`configs/viseme_map_*.json`)  
 4. Mel tensors (`scripts/build_train_tensors.py`)  
-5. Train MLP / smoke → ONNX + sidecar JSON  
+5. Train MLP / TCN → self-describing ONNX
 
-Godot never trains; it only loads ONNX + mel config.
+Godot never trains; it loads the graph and Mel contract from the same ONNX.
 
 ## Environment
 
@@ -69,7 +69,7 @@ python3 scripts/train_viseme_smoke.py \
   --export-onnx export/ci-smoke/model.onnx
 ```
 
-Writes `model.onnx` + `model.json` (mel params, viseme table).
+Writes `model.onnx` with embedded Mel parameters, vocabulary and provenance.
 
 ## Tier-B train (longer Libri run)
 
@@ -82,7 +82,7 @@ python3 scripts/train_viseme_tier_b.py \
   --hours 1
 ```
 
-Timed checkpoints: `model_10m.onnx`, `model_20m.onnx`, `model_final.onnx` (+ JSON).
+Timed checkpoints: `model_10m.onnx`, `model_20m.onnx`, `model_final.onnx`.
 Convergence log/plot: `convergence.csv` / `convergence.png`.
 
 ## Scoring quality
@@ -99,24 +99,67 @@ Eye-check curves vs MFA boxes in Godot:
 ```bash
 python3 scripts/export_viseme_timeline.py \
   --subset test-clean --stem 8555-284447-0002 \
-  --model-json export/tier-b/model.json \
   --onnx export/tier-b/model_final.onnx \
   --onnx-b export/tier-b/model_10m.onnx \
   --out export/tier-b/viseme_timeline.json
 # open godot-demo/viseme_timeline.tscn
 ```
 
+## Single-clip capacity check
+
+This deliberately trains and scores on the same aligned clip. It answers whether
+the architecture can reproduce the simple case; it is **not** a quality or
+generalisation result. The trainer stores the fit accuracy in the ONNX metadata.
+
+```bash
+STEM=1089-134686-0000
+python3 scripts/train_viseme_tcn.py \
+  --subset test-clean --overfit-stem "$STEM" --dropout 0 \
+  --wall-seconds 60 --out-dir export/one-stem-overfit
+python3 scripts/export_viseme_timeline.py \
+  --subset test-clean --stem "$STEM" \
+  --onnx export/ci-smoke/model.onnx \
+  --onnx-b export/one-stem-overfit/model_final.onnx \
+  --label-a "A: ci-smoke baseline" --label-b "B: one-clip fit" \
+  --out export/one-stem-overfit/viseme_timeline.json
+bash scripts/sync_vizeme_onnxmodels.sh
+```
+
+Open the previewer with the pack as Model B:
+
+```bash
+export VISEMES_MODEL_B_DIR="$PWD/godot-demo/addons/vizeme-onnxmodels/one-stem-overfit"
+export VISEMES_TIMELINE_JSON="$PWD/godot-demo/addons/vizeme-onnxmodels/one-stem-overfit/viseme_timeline.json"
+godot4 --editor --path "$PWD/godot-demo"
+```
+
+In `viseme_timeline.tscn`, select `Model B` as the primary source and compare
+it with the ground-truth timeline or Model A. The one-clip model is expected to
+fail on any other clip.
+
+## Phone duration evidence
+
+Summarise MFA-aligned phone spans and make the distribution plot Julian asked
+for:
+
+```bash
+python3 scripts/report_phone_durations.py --subset test-clean
+```
+
+This writes `export/phone-duration-report/README.md`, `phone_durations.csv`,
+`summary.json`, and `phone_duration_distributions.png`. The report is evidence
+for transition-policy experiments; it does not measure visual mouth movement.
+
 ## Metadata on export
 
-After training (or before shipping a release):
+New trainers embed schema-2 metadata during export. For old ONNX+JSON pairs only:
 
 ```bash
 python3 scripts/embed_model_metadata.py export/tier-b/model_*.onnx
 ```
 
-Refreshes sidecar JSON (`latency`, `quality`) and embeds `vizemes_*` keys in the
-ONNX `metadata_props` so a lone `.onnx` still describes mel shape, lookahead,
-and estimated hit-rate. Sidecar JSON remains what MelFrontend.configure reads.
+The migration tool embeds and verifies `vizemes_*` metadata. Remove the legacy
+sidecar after verification; CI rejects model JSON in shipped packs.
 
 ## Layout reminders
 

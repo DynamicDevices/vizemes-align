@@ -57,6 +57,14 @@ jobs:
       - name: install python deps
         run: pip install -r requirements.txt
 
+      - name: ONNX model contract is self-contained
+        run: |
+          python scripts/test_model_contract.py
+          python scripts/test_onnx_only_packs.py
+          python scripts/test_phone_viseme_baseline.py
+          python scripts/test_phone_metrics.py
+          python scripts/verify_vizemes_architecture.py
+
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
 
@@ -129,9 +137,8 @@ jobs:
             --export-onnx export/ci-smoke/model.onnx
           python scripts/build_demo_inputs.py --subset ci-fixture
           test -f export/ci-smoke/model.onnx
-          test -f export/ci-smoke/model.json
           test -f export/ci-smoke/demo_inputs.csv
-          python -c 'import json; print("best_val_acc", json.load(open("export/ci-smoke/model.json"))["best_val_acc"])'
+          python -c 'from pathlib import Path; from scripts.model_contract import load_model_contract; print("best_val_acc", load_model_contract(Path("export/ci-smoke/model.onnx"), require_schema=2)["best_val_acc"])'
 
       - name: sanity check committed smoke ONNX
         run: |
@@ -186,6 +193,9 @@ jobs:
       MEL_SCONS_CACHE: /var/tmp/github-runner-cache/scons/vizemes-mel
       ONNX_LOADER_SCONS_CACHE: /var/tmp/github-runner-cache/scons/godot-onnx-loader
       ONNX_LOADER_ROOT: /var/tmp/github-runner-cache/godot-onnx-loader-src
+      # Match the immutable revision proven by godot-onnx-loader's full Godot
+      # 4.6 + store-ORT smoke (PR #32).
+      NIXPKGS: github:NixOS/nixpkgs/b6018f87da91d19d0ab4cf979885689b469cdd41
     steps:
       - uses: actions/checkout@v7
         with:
@@ -227,17 +237,20 @@ jobs:
             test -f ../addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           '
 
-      - name: Godot mel+lipsync smoke (NixOS, Godot 4.6 MS-ORT)
+      - name: Godot mel+lipsync smoke (NixOS, store Godot + store ORT)
         if: steps.mel.outputs.run == '1'
         run: |
           set -euo pipefail
-          # Same gate Julian hit: bare `nix develop` GODOT_BIN is still 4.5.1.
-          # Use godot_46_ms_ort + nixos-26.05 godot_4_6 (see julian_vizemes_smoke.sh).
+          # Julian mid 1067 / A/B: nixpkgs godot_4_6 + nixpkgs onnxruntime PASS;
+          # MS ORT under nixpkgs Godot free()s. Keep MS for portable/non-Nix only.
           mkdir -p "$ONNX_LOADER_SCONS_CACHE"
+          export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
+          # onnx-loader main: tools/godot_46_nix_store_ort.sh (PR #30).
+          ONNX_LOADER_REF="${ONNX_LOADER_REF:-main}"
           if [[ ! -d "$ONNX_LOADER_ROOT/.git" ]]; then
-            git clone --depth 1 --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
+            git clone --depth 1 --branch "$ONNX_LOADER_REF" --recurse-submodules https://github.com/DynamicDevices/godot-onnx-loader.git "$ONNX_LOADER_ROOT"
           else
-            git -C "$ONNX_LOADER_ROOT" fetch --depth 1 origin main
+            git -C "$ONNX_LOADER_ROOT" fetch --depth 1 origin "$ONNX_LOADER_REF"
             git -C "$ONNX_LOADER_ROOT" checkout -f FETCH_HEAD
             git -C "$ONNX_LOADER_ROOT" submodule update --init --recursive
           fi
@@ -245,17 +258,24 @@ jobs:
           test -f addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
           test -f export/ci-smoke/model.onnx
           test -f export/ci-smoke/ci-fixture.wav
-          export SCONS_CACHE="$ONNX_LOADER_SCONS_CACHE"
-          (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_ms_ort.sh)
+          (cd "$ONNX_LOADER_ROOT" && bash tools/godot_46_nix_store_ort.sh)
           NIXPKGS="${NIXPKGS:-github:nixos/nixpkgs/nixos-26.05}"
-          nix shell "${NIXPKGS}#godot_4_6" --command bash -c '
+          nix shell "${NIXPKGS}#godot_4_6" "${NIXPKGS}#onnxruntime" "${NIXPKGS}#gcc" --command bash -c '
             set -euo pipefail
             G=$(command -v godot4 || command -v godot || true)
             test -n "$G" && test -x "$G"
             export GODOT_BIN="$G"
-            unset ONNX_ORT_BIN
+            export ONNX_LOADER_ROOT="'"$ONNX_LOADER_ROOT"'"
+            # The loader helper selected and linked one exact ORT store output.
+            # Reuse it; globbing /nix/store can silently select another version.
+            ORTSO=$(readlink -f "$ONNX_LOADER_ROOT/addons/onnx_loader/bin/libonnxruntime.so.1")
+            test -f "$ORTSO"
+            [[ "$ORTSO" == /nix/store/*/lib/libonnxruntime.so* ]]
+            export ONNX_ORT_BIN="$(dirname "$ORTSO")"
+            export ORT_BUNDLE=0
             export ONNX_LOADER_SKIP_SESSION_RELEASE=1
             cd "'"$GITHUB_WORKSPACE"'"
             bash godot-demo/tools/gdscript_check_only.sh
             bash godot-demo/tools/godot_mel_smoke.sh
+            bash godot-demo/tools/run_tcn_load_probe.sh
           '

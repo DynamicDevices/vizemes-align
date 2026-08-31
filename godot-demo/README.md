@@ -103,8 +103,9 @@ Then open `viseme_timeline.tscn` (F6) — primary quality UI — or `seek_probe.
 - Type a `test-clean` stem id (default `1320-122617-0010`) → **Load** to re-export MFA boxes + reload.
 - **Seek table…** opens expect/got + MEL dumps; **Mic…** opens live capture.
 - Wheel zoom, middle-drag pan, left-drag select, Space/P play, Esc clear, R reset.
-- A/B toggle models (if `onnx_b` set); D toggles argmax-disagreement ribbon; **H** toggles hard 1-byte/20ms viseme ribbon (MPEG-4-style id+blend).
+- A/B toggle models (when a secondary pack is set); D toggles the argmax-disagreement ribbon; **H** toggles the local ID+confidence preview ribbon. That preview byte is not the sparse Opus boundary-event wire contract.
 - **T** drives the top face from MFA/training expect boxes (quality ceiling) instead of ONNX A; **[** / **]** adjust crossfade width at box boundaries (default 60 ms).
+- **M** toggles the 80-bin, per-utterance-normalised Mel spectrogram underlay. It is the same matrix supplied to the TCN, so its time axis and values match the model input rather than a separate display analysis.
 - **Sample / primary / overlay OptionButtons** (Julian 947): pick a stem or mic recording; primary drives the top face (Ground truth / Model A / Model B / Hidden); overlay is the faded compare series. Ground truth is disabled when the sample has no MFA timeline.
 
 **Companion:** `seek_probe.tscn` — side-by-side expect vs got; full MEL dumps under
@@ -118,6 +119,23 @@ python3 scripts/export_seek_probe.py --subset ci-fixture --out export/ci-smoke/s
 ```
 
 Headless markers: `GODOT_VISEME_TIMELINE_OK`, `GODOT_SEEK_PROBE_OK` (seek also in `godot_mel_smoke.sh`).
+
+### Direct-viseme vs phone-to-viseme review
+
+The shipped `tier-c` pack is the controlled 600-second phone TCN. Start the
+editor with it as Model B; Model A remains the direct `tier-b-tcn` baseline:
+
+```bash
+export VISEMES_MODEL_B_DIR="$PWD/godot-demo/addons/vizeme-onnxmodels/tier-c"
+godot4 --editor --path "$PWD/godot-demo"
+```
+
+Open `viseme_timeline.tscn`, then use the **primary** and **overlay** selectors
+to swap Model A and Model B while replaying the same selection. Model B's phone
+posterior table, smoothing and viseme vocabulary come entirely from its ONNX
+metadata. For a headless load/inference gate, run the scene with the same
+environment variable and expect both model manifests plus
+`GODOT_VISEME_TIMELINE_OK`.
 
 ### Live mic (`mic_lipsync.tscn`)
 

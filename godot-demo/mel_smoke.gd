@@ -45,7 +45,6 @@ func _run_hit_rate(loader: Object, contexts: Array, csv_path: String, nfeat: int
 
 func _ready() -> void:
 	var paths := ClipProbeIo.resolve_ci_smoke_paths()
-	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var pack := str(paths.get("dir", ClipProbeIo.models_abs().path_join("ci-smoke")))
 	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
@@ -63,7 +62,7 @@ func _ready() -> void:
 		push_error("OnnxLoader load failed: %s" % onnx_path)
 		get_tree().quit(1)
 		return
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		push_error("MelFrontend configure failed: %s" % onnx_path)
 		get_tree().quit(1)
 		return

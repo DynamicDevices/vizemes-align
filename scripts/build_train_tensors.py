@@ -19,7 +19,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from export_godot_package import load_viseme_map, phones_from_textgrid  # noqa: E402
 from mel_features_c import mel_features_c  # noqa: E402
 
-# Match OpenLipSync training/recipes/tcn_config.toml defaults (also in model.json sidecar).
+# Match OpenLipSync training/recipes/tcn_config.toml defaults (embedded in ONNX metadata).
 AUDIO = {
     "sample_rate": 16000,
     "n_fft": 1024,
@@ -33,8 +33,8 @@ AUDIO = {
 
 def mel_features(wav_path: Path) -> np.ndarray:
     """Return (T, n_mels) float32 log-mel from host C (runtime SoT)."""
-    model_json = ROOT / "export/ci-smoke/model.json"
-    return mel_features_c(wav_path, model_json)
+    model_onnx = ROOT / "export/ci-smoke/model.onnx"
+    return mel_features_c(wav_path, model_onnx)
 
 
 def frame_viseme_ids(

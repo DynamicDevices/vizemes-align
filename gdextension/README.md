@@ -7,9 +7,9 @@ addon — not a bespoke ORT GDExtension in this repo.
 
 OpenLipSync’s C mel is a **starting frontend**, not a compatibility lock.
 Waveform→features stays swappable (mel, LPC, …). Each exported ONNX keeps its
-own model contract (`export/ci-smoke/model.json`). Host C tools consume a flat
-`model.meta` emitted by `tools/emit_model_meta.py` (stdlib `json` — no hand-rolled
-C JSON parser). Godot keeps parsing `model.json` in GDScript.
+own model contract inside its ONNX `metadata_props`. Host C tools consume a flat
+`model.meta` derived from that ONNX by `tools/emit_model_meta.py`; Godot reads the
+same contract through OnnxLoader.
 
 ## Layout
 
@@ -18,7 +18,7 @@ C JSON parser). Godot keeps parsing `model.json` in GDScript.
 | `include/feature_frontend.h` | Pluggable frontend ops |
 | `include/viseme_runtime.h` | PCM → viseme weights (C API) |
 | `include/model_meta.h` | Flat `model.meta` reader (`key=value`) |
-| `tools/emit_model_meta.py` | `model.json` → `model.meta` (stdlib json) |
+| `tools/emit_model_meta.py` | ONNX metadata → `model.meta` |
 | `frontends/mel/` | First impl (vendored mel C + ORIGIN.md) |
 | `src/mel_frontend.c` | Mel → `VizemesFrontendOps` |
 | `src/model_meta.c` | Host meta loader |
@@ -27,7 +27,7 @@ C JSON parser). Godot keeps parsing `model.json` in GDScript.
 | `tools/smoke_context.c` | Host smoke: one flat mel context → softmax |
 | `tools/smoke_csv.c` | Host smoke: all `demo_inputs.csv` rows (≡ Python table) |
 | `../godot-demo/` | Godot **4.6+** dev project — **OnnxLoader** + **MelFrontend** + smokes |
-| `../export/ci-smoke/` | Smoke `model.onnx` + `model.json` + demo inputs |
+| `../export/ci-smoke/` | Self-describing smoke `model.onnx` + demo inputs |
 | `../scripts/sanity_check_onnx.py` | Python ORT harness |
 
 Removed: `VizemesOnnx` GDExtension (monolithic ORT in this repo). ONNX in

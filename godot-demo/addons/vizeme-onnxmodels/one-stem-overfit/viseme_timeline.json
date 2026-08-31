@@ -1,0 +1,1129 @@
+{
+  "subset": "test-clean",
+  "stem": "1089-134686-0000",
+  "wav": "export/ci-smoke/timeline_1089-134686-0000.wav",
+  "model_onnx": "export/ci-smoke/model.onnx",
+  "onnx": "export/ci-smoke/model.onnx",
+  "onnx_b": "export/one-stem-overfit/model_final.onnx",
+  "label_a": "A: ci-smoke baseline",
+  "label_b": "B: one-clip fit",
+  "context_frames": 20,
+  "hop_s": 0.01,
+  "duration_s": 10.435,
+  "viseme_names": [
+    "silence",
+    "PP",
+    "FF",
+    "TH",
+    "DD",
+    "kk",
+    "CH",
+    "SS",
+    "nn",
+    "RR",
+    "aa",
+    "E",
+    "ih",
+    "oh",
+    "ou"
+  ],
+  "visemes": {
+    "silence": 0,
+    "PP": 1,
+    "FF": 2,
+    "TH": 3,
+    "DD": 4,
+    "kk": 5,
+    "CH": 6,
+    "SS": 7,
+    "nn": 8,
+    "RR": 9,
+    "aa": 10,
+    "E": 11,
+    "ih": 12,
+    "oh": 13,
+    "ou": 14
+  },
+  "boxes": [
+    {
+      "start": 0.52,
+      "end": 0.58,
+      "expect_id": 0,
+      "expect_name": "silence",
+      "phones": [
+        "HH"
+      ]
+    },
+    {
+      "start": 0.58,
+      "end": 0.65,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IY1"
+      ]
+    },
+    {
+      "start": 0.65,
+      "end": 0.72,
+      "expect_id": 0,
+      "expect_name": "silence",
+      "phones": [
+        "HH"
+      ]
+    },
+    {
+      "start": 0.72,
+      "end": 0.85,
+      "expect_id": 13,
+      "expect_name": "oh",
+      "phones": [
+        "OW1"
+      ]
+    },
+    {
+      "start": 0.85,
+      "end": 0.92,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 0.92,
+      "end": 1.01,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 1.01,
+      "end": 1.05,
+      "expect_id": 3,
+      "expect_name": "TH",
+      "phones": [
+        "DH"
+      ]
+    },
+    {
+      "start": 1.05,
+      "end": 1.08,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EH1"
+      ]
+    },
+    {
+      "start": 1.08,
+      "end": 1.13,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "R"
+      ]
+    },
+    {
+      "start": 1.13,
+      "end": 1.2,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "W"
+      ]
+    },
+    {
+      "start": 1.2,
+      "end": 1.26,
+      "expect_id": 13,
+      "expect_name": "oh",
+      "phones": [
+        "UH1"
+      ]
+    },
+    {
+      "start": 1.26,
+      "end": 1.31,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 1.31,
+      "end": 1.36,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "B"
+      ]
+    },
+    {
+      "start": 1.36,
+      "end": 1.43,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IY0"
+      ]
+    },
+    {
+      "start": 1.43,
+      "end": 1.56,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 1.56,
+      "end": 1.64,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 1.64,
+      "end": 1.83,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "UW1"
+      ]
+    },
+    {
+      "start": 1.83,
+      "end": 1.91,
+      "expect_id": 2,
+      "expect_name": "FF",
+      "phones": [
+        "F"
+      ]
+    },
+    {
+      "start": 1.91,
+      "end": 1.98,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "R",
+        "ER0"
+      ]
+    },
+    {
+      "start": 1.98,
+      "end": 2.05,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 2.05,
+      "end": 2.12,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IH1"
+      ]
+    },
+    {
+      "start": 2.12,
+      "end": 2.17,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 2.17,
+      "end": 2.36,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "ER0"
+      ]
+    },
+    {
+      "start": 2.61,
+      "end": 2.67,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 2.67,
+      "end": 2.78,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "ER1"
+      ]
+    },
+    {
+      "start": 2.78,
+      "end": 2.83,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 2.83,
+      "end": 2.9,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 2.9,
+      "end": 2.99,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 2.99,
+      "end": 3.07,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 3.07,
+      "end": 3.12,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 3.12,
+      "end": 3.18,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 3.18,
+      "end": 3.26,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 3.26,
+      "end": 3.33,
+      "expect_id": 5,
+      "expect_name": "kk",
+      "phones": [
+        "K"
+      ]
+    },
+    {
+      "start": 3.33,
+      "end": 3.39,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EH1"
+      ]
+    },
+    {
+      "start": 3.39,
+      "end": 3.5,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "R"
+      ]
+    },
+    {
+      "start": 3.5,
+      "end": 3.58,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 3.58,
+      "end": 3.66,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 3.66,
+      "end": 3.77,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 3.77,
+      "end": 3.86,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 3.86,
+      "end": 3.9,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 3.9,
+      "end": 4.0,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 4.0,
+      "end": 4.04,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "B"
+      ]
+    },
+    {
+      "start": 4.04,
+      "end": 4.09,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "R"
+      ]
+    },
+    {
+      "start": 4.09,
+      "end": 4.27,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "UW1"
+      ]
+    },
+    {
+      "start": 4.27,
+      "end": 4.32,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "Z"
+      ]
+    },
+    {
+      "start": 4.32,
+      "end": 4.41,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 4.41,
+      "end": 4.45,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 4.45,
+      "end": 4.5,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 4.5,
+      "end": 4.59,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 4.59,
+      "end": 4.69,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EY1"
+      ]
+    },
+    {
+      "start": 4.69,
+      "end": 4.73,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 4.73,
+      "end": 4.95,
+      "expect_id": 13,
+      "expect_name": "oh",
+      "phones": [
+        "OW0"
+      ]
+    },
+    {
+      "start": 4.95,
+      "end": 5.05,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "Z"
+      ]
+    },
+    {
+      "start": 5.05,
+      "end": 5.11,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 5.11,
+      "end": 5.16,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 5.16,
+      "end": 5.22,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 5.22,
+      "end": 5.36,
+      "expect_id": 2,
+      "expect_name": "FF",
+      "phones": [
+        "F"
+      ]
+    },
+    {
+      "start": 5.36,
+      "end": 5.49,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "AE1"
+      ]
+    },
+    {
+      "start": 5.49,
+      "end": 5.6,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 5.6,
+      "end": 5.78,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "M"
+      ]
+    },
+    {
+      "start": 5.78,
+      "end": 5.83,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH1"
+      ]
+    },
+    {
+      "start": 5.83,
+      "end": 5.93,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 5.93,
+      "end": 5.97,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 5.97,
+      "end": 6.02,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 6.02,
+      "end": 6.16,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 6.16,
+      "end": 6.23,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IY1"
+      ]
+    },
+    {
+      "start": 6.23,
+      "end": 6.34,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 6.34,
+      "end": 6.4,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IH0"
+      ]
+    },
+    {
+      "start": 6.4,
+      "end": 6.49,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "Z"
+      ]
+    },
+    {
+      "start": 6.49,
+      "end": 6.59,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 6.59,
+      "end": 6.63,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 6.63,
+      "end": 6.7,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "B"
+      ]
+    },
+    {
+      "start": 6.7,
+      "end": 6.78,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IY0"
+      ]
+    },
+    {
+      "start": 6.78,
+      "end": 6.92,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "L"
+      ]
+    },
+    {
+      "start": 6.92,
+      "end": 7.03,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EY1"
+      ]
+    },
+    {
+      "start": 7.03,
+      "end": 7.08,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 7.08,
+      "end": 7.12,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 7.12,
+      "end": 7.19,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "L"
+      ]
+    },
+    {
+      "start": 7.19,
+      "end": 7.24,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 7.24,
+      "end": 7.48,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "AW1"
+      ]
+    },
+    {
+      "start": 7.48,
+      "end": 7.59,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 7.59,
+      "end": 7.62,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IH0"
+      ]
+    },
+    {
+      "start": 7.62,
+      "end": 7.69,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 7.69,
+      "end": 7.9,
+      "expect_id": 3,
+      "expect_name": "TH",
+      "phones": [
+        "TH"
+      ]
+    },
+    {
+      "start": 7.9,
+      "end": 7.98,
+      "expect_id": 12,
+      "expect_name": "ih",
+      "phones": [
+        "IH1"
+      ]
+    },
+    {
+      "start": 7.98,
+      "end": 8.13,
+      "expect_id": 5,
+      "expect_name": "kk",
+      "phones": [
+        "K"
+      ]
+    },
+    {
+      "start": 8.24,
+      "end": 8.31,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 8.31,
+      "end": 8.37,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "EH1"
+      ]
+    },
+    {
+      "start": 8.37,
+      "end": 8.45,
+      "expect_id": 1,
+      "expect_name": "PP",
+      "phones": [
+        "P"
+      ]
+    },
+    {
+      "start": 8.45,
+      "end": 8.56,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "ER0"
+      ]
+    },
+    {
+      "start": 8.56,
+      "end": 8.65,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 8.65,
+      "end": 8.87,
+      "expect_id": 2,
+      "expect_name": "FF",
+      "phones": [
+        "F"
+      ]
+    },
+    {
+      "start": 8.87,
+      "end": 8.91,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "L"
+      ]
+    },
+    {
+      "start": 8.91,
+      "end": 9.01,
+      "expect_id": 14,
+      "expect_name": "ou",
+      "phones": [
+        "AW1"
+      ]
+    },
+    {
+      "start": 9.01,
+      "end": 9.1,
+      "expect_id": 9,
+      "expect_name": "RR",
+      "phones": [
+        "ER0"
+      ]
+    },
+    {
+      "start": 9.1,
+      "end": 9.26,
+      "expect_id": 2,
+      "expect_name": "FF",
+      "phones": [
+        "F"
+      ]
+    },
+    {
+      "start": 9.26,
+      "end": 9.35,
+      "expect_id": 11,
+      "expect_name": "E",
+      "phones": [
+        "AE1"
+      ]
+    },
+    {
+      "start": 9.35,
+      "end": 9.42,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "T"
+      ]
+    },
+    {
+      "start": 9.42,
+      "end": 9.47,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AH0"
+      ]
+    },
+    {
+      "start": 9.47,
+      "end": 9.51,
+      "expect_id": 8,
+      "expect_name": "nn",
+      "phones": [
+        "N"
+      ]
+    },
+    {
+      "start": 9.51,
+      "end": 9.56,
+      "expect_id": 4,
+      "expect_name": "DD",
+      "phones": [
+        "D"
+      ]
+    },
+    {
+      "start": 9.56,
+      "end": 9.75,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    },
+    {
+      "start": 9.75,
+      "end": 9.93,
+      "expect_id": 10,
+      "expect_name": "aa",
+      "phones": [
+        "AA1"
+      ]
+    },
+    {
+      "start": 9.93,
+      "end": 10.11,
+      "expect_id": 7,
+      "expect_name": "SS",
+      "phones": [
+        "S"
+      ]
+    }
+  ],
+  "words": [
+    {
+      "start": 0.52,
+      "end": 0.65,
+      "word": "he"
+    },
+    {
+      "start": 0.65,
+      "end": 1.01,
+      "word": "hoped"
+    },
+    {
+      "start": 1.01,
+      "end": 1.13,
+      "word": "there"
+    },
+    {
+      "start": 1.13,
+      "end": 1.31,
+      "word": "would"
+    },
+    {
+      "start": 1.31,
+      "end": 1.43,
+      "word": "be"
+    },
+    {
+      "start": 1.43,
+      "end": 1.83,
+      "word": "stew"
+    },
+    {
+      "start": 1.83,
+      "end": 1.98,
+      "word": "for"
+    },
+    {
+      "start": 1.98,
+      "end": 2.36,
+      "word": "dinner"
+    },
+    {
+      "start": 2.61,
+      "end": 3.07,
+      "word": "turnips"
+    },
+    {
+      "start": 3.07,
+      "end": 3.26,
+      "word": "and"
+    },
+    {
+      "start": 3.26,
+      "end": 3.77,
+      "word": "carrots"
+    },
+    {
+      "start": 3.77,
+      "end": 4.0,
+      "word": "and"
+    },
+    {
+      "start": 4.0,
+      "end": 4.41,
+      "word": "bruised"
+    },
+    {
+      "start": 4.41,
+      "end": 5.05,
+      "word": "potatoes"
+    },
+    {
+      "start": 5.05,
+      "end": 5.22,
+      "word": "and"
+    },
+    {
+      "start": 5.22,
+      "end": 5.6,
+      "word": "fat"
+    },
+    {
+      "start": 5.6,
+      "end": 6.02,
+      "word": "mutton"
+    },
+    {
+      "start": 6.02,
+      "end": 6.49,
+      "word": "pieces"
+    },
+    {
+      "start": 6.49,
+      "end": 6.63,
+      "word": "to"
+    },
+    {
+      "start": 6.63,
+      "end": 6.78,
+      "word": "be"
+    },
+    {
+      "start": 6.78,
+      "end": 7.24,
+      "word": "ladled"
+    },
+    {
+      "start": 7.24,
+      "end": 7.59,
+      "word": "out"
+    },
+    {
+      "start": 7.59,
+      "end": 7.69,
+      "word": "in"
+    },
+    {
+      "start": 7.69,
+      "end": 8.13,
+      "word": "thick"
+    },
+    {
+      "start": 8.24,
+      "end": 8.65,
+      "word": "peppered"
+    },
+    {
+      "start": 8.65,
+      "end": 9.1,
+      "word": "flour"
+    },
+    {
+      "start": 9.1,
+      "end": 9.56,
+      "word": "fattened"
+    },
+    {
+      "start": 9.56,
+      "end": 10.11,
+      "word": "sauce"
+    }
+  ],
+  "note": "Godot runs MelFrontend+ONNX across the wav and draws 15 weight curves; boxes are MFA phones collapsed to trained viseme labels; words are MFA word intervals (when the TextGrid has a words tier). Optional onnx_b overlays a second model (toggle A/B/D in editor)."
+}

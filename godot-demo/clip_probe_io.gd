@@ -54,15 +54,7 @@ static func run_python(script_rel: String, args: PackedStringArray) -> Dictionar
 
 
 static func _onnx_in_dir(dir_abs: String) -> String:
-	for name in ["model_final.onnx", "model.onnx"]:
-		var p := dir_abs.path_join(name)
-		if FileAccess.file_exists(p):
-			return p
-	return ""
-
-
-static func _json_in_dir(dir_abs: String) -> String:
-	for name in ["model_final.json", "model.json"]:
+	for name in ["model_final.onnx", "model.onnx", "phone.onnx"]:
 		var p := dir_abs.path_join(name)
 		if FileAccess.file_exists(p):
 			return p
@@ -70,7 +62,7 @@ static func _json_in_dir(dir_abs: String) -> String:
 
 
 static func list_model_packs() -> Array:
-	## [{id, dir_abs, onnx_abs, json_abs, res_dir}] under vizeme-onnxmodels.
+	## [{id, dir_abs, onnx_abs, res_dir}] under vizeme-onnxmodels.
 	var out: Array = []
 	var root_abs := models_abs()
 	var da := DirAccess.open(MODELS_RES)
@@ -88,7 +80,6 @@ static func list_model_packs() -> Array:
 					"id": name,
 					"dir_abs": dir_abs,
 					"onnx_abs": onnx,
-					"json_abs": _json_in_dir(dir_abs),
 					"res_dir": res_dir,
 				})
 		name = da.get_next()
@@ -127,7 +118,6 @@ static func resolve_ci_smoke_paths() -> Dictionary:
 		if str(p.get("id", "")) == "ci-smoke":
 			return {
 				"onnx": str(p["onnx_abs"]),
-				"json": str(p.get("json_abs", "")),
 				"dir": str(p["dir_abs"]),
 				"tcn": false,
 				"id": "ci-smoke",
@@ -136,6 +126,16 @@ static func resolve_ci_smoke_paths() -> Dictionary:
 
 
 static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
+	var override_dir := resolve_model_dir()
+	if not OS.get_environment("VISEMES_MODEL_DIR").is_empty():
+		var override_onnx := _onnx_in_dir(override_dir)
+		if not override_onnx.is_empty():
+			return {
+				"onnx": override_onnx,
+				"dir": override_dir,
+				"tcn": false, # caller confirms architecture from ONNX metadata
+				"id": override_dir.get_file(),
+			}
 	var packs := list_model_packs()
 	var order: Array[String] = []
 	if prefer_tcn:
@@ -150,7 +150,6 @@ static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 				continue
 			return {
 				"onnx": str(p["onnx_abs"]),
-				"json": str(p.get("json_abs", "")),
 				"dir": str(p["dir_abs"]),
 				"tcn": id.contains("tcn"),
 				"id": id,
@@ -159,12 +158,25 @@ static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 		var id := str(p.get("id", ""))
 		return {
 			"onnx": str(p["onnx_abs"]),
-			"json": str(p.get("json_abs", "")),
 			"dir": str(p["dir_abs"]),
 			"tcn": id.contains("tcn"),
 			"id": id,
 		}
-	return {"onnx": "", "json": "", "dir": "", "tcn": false, "id": ""}
+	return {"onnx": "", "dir": "", "tcn": false, "id": ""}
+
+
+static func resolve_optional_model_env(env_name: String) -> Dictionary:
+	## Explicit A/B pack override, constrained to the distributable project tree.
+	var raw := OS.get_environment(env_name)
+	if raw.is_empty():
+		return {}
+	var model_dir := raw if raw.is_absolute_path() else project_abs().path_join(raw)
+	if not model_dir.begins_with(project_abs()):
+		return {}
+	var onnx := _onnx_in_dir(model_dir)
+	if onnx.is_empty():
+		return {}
+	return {"onnx": onnx, "dir": model_dir, "id": model_dir.get_file()}
 
 
 static func resolve_timeline_json() -> String:
@@ -225,12 +237,9 @@ static func export_viseme_timeline(stem: String, subset: String = DEFAULT_SUBSET
 		"--out", out,
 	])
 	var onnx := _onnx_in_dir(abs_dir)
-	var meta := _json_in_dir(abs_dir)
 	var onnx_b := abs_dir.path_join("model_10m.onnx")
 	if not onnx.is_empty():
 		args.append_array(PackedStringArray(["--onnx", onnx]))
-	if not meta.is_empty():
-		args.append_array(PackedStringArray(["--model-json", meta]))
 	if FileAccess.file_exists(onnx_b):
 		args.append_array(PackedStringArray([
 			"--onnx-b", onnx_b,

@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import csv
-import json
+import sys
 from pathlib import Path
 
 import numpy as np
@@ -11,12 +11,15 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 NPZ = ROOT / "export" / "ci-smoke" / "demo_inputs.npz"
 CSV_OUT = ROOT / "export" / "ci-smoke" / "demo_inputs.csv"
-META = ROOT / "export" / "ci-smoke" / "model.json"
+MODEL = ROOT / "export" / "ci-smoke" / "model.onnx"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from model_contract import id_to_label, load_model_contract  # noqa: E402
 
 
 def main() -> int:
-    meta = json.loads(META.read_text())
-    id_to_name = {int(v): k for k, v in meta["visemes"].items()}
+    meta = load_model_contract(MODEL)
+    id_to_name = id_to_label(meta)
     z = np.load(NPZ)
     X, y = z["X"], z["y"]
     n_feat = X.shape[1]

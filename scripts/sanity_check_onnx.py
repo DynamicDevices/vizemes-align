@@ -11,7 +11,6 @@ Runs inference one row at a time; prints expect vs predict.
 from __future__ import annotations
 
 import csv
-import json
 import math
 import sys
 from pathlib import Path
@@ -19,6 +18,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 ONNX = ROOT / "export" / "ci-smoke" / "model.onnx"
 CSV_PATH = ROOT / "export" / "ci-smoke" / "demo_inputs.csv"
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from model_contract import id_to_label, load_model_contract  # noqa: E402
 
 
 def main() -> int:
@@ -28,8 +30,8 @@ def main() -> int:
         print("Need onnxruntime (nix develop .#train)", file=sys.stderr)
         return 1
 
-    meta = json.loads(ONNX.with_suffix(".json").read_text())
-    names = {int(v): k for k, v in meta["visemes"].items()}
+    meta = load_model_contract(ONNX)
+    names = id_to_label(meta)
     n_feat = int(meta["input_features"])
     sess = ort.InferenceSession(str(ONNX), providers=["CPUExecutionProvider"])
     xin = sess.get_inputs()[0].name

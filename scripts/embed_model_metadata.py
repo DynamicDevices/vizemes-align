@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Embed / refresh viseme model metadata in sidecar JSON + ONNX metadata_props.
+"""Migrate a model sidecar into canonical ONNX ``metadata_props``.
 
-Godot still loads the sidecar JSON via MelFrontend.configure; ONNX props make a
-lone .onnx self-describing (mel params, latency, quality estimates).
+The sibling JSON is accepted as a compatibility input while older training and
+evaluation tools are migrated.  After this command succeeds, the ONNX metadata
+is the runtime source of truth and is verified by re-reading the saved model.
 """
 from __future__ import annotations
 
@@ -38,7 +39,7 @@ def estimate_latency(audio: dict, context_frames: int, lookahead_ms: float) -> d
         "note": (
             "Feed mono float PCM at sample_rate with n_mels/hop/window matching audio{}. "
             "ONNX input is flattened context_frames * n_mels. "
-            "Sidecar JSON is SoT for MelFrontend.configure; ONNX vizemes_* props mirror it."
+            "ONNX metadata_props are the runtime source of truth for MelFrontend.configure."
         ),
     }
 
@@ -88,11 +89,27 @@ def embed_onnx(onnx_path: Path, meta: dict) -> None:
     del model.metadata_props[:]
     model.metadata_props.extend(keep)
 
+    vocabulary = meta.get("visemes") or meta.get("phones") or {}
+    provenance_keys = (
+        "subset",
+        "checkpoint",
+        "step",
+        "elapsed_s",
+        "train_utterances",
+        "val_utterances",
+        "params",
+    )
+    provenance = {k: meta[k] for k in provenance_keys if k in meta}
+    normalization = str(meta.get("normalization", "per_utterance_per_mel_mean_std"))
     flat = {
-        "vizemes_schema": "1",
+        "vizemes_schema": "2",
+        "vizemes_doc": str(meta.get("doc", meta.get("note", ""))),
         "vizemes_model": str(meta.get("model", "")),
         "vizemes_subset": str(meta.get("subset", "")),
         "vizemes_checkpoint": str(meta.get("checkpoint", "")),
+        "vizemes_normalization": normalization,
+        "vizemes_vocabulary_json": json.dumps(vocabulary, separators=(",", ":")),
+        "vizemes_provenance_json": json.dumps(provenance, separators=(",", ":")),
         "vizemes_context_frames": str(meta.get("context_frames", "")),
         "vizemes_n_mels": str(meta.get("n_mels", "")),
         "vizemes_input_features": str(meta.get("input_features", "")),
@@ -112,7 +129,6 @@ def embed_onnx(onnx_path: Path, meta: dict) -> None:
         ),
         "vizemes_quality_all_acc": str((meta.get("quality") or {}).get("all_acc", "")),
         "vizemes_quality_non_silence_acc": str((meta.get("quality") or {}).get("non_silence_acc", "")),
-        "vizemes_sidecar_json": onnx_path.with_suffix(".json").name,
         "vizemes_updated_utc": meta.get("metadata_updated_utc", ""),
         "vizemes_meta_json": json.dumps(meta, separators=(",", ":")),
     }
@@ -124,6 +140,20 @@ def embed_onnx(onnx_path: Path, meta: dict) -> None:
         entry.value = v if len(v) < 60000 else v[:60000]
     onnx.save(model, str(onnx_path))
 
+    # The saved ONNX, not the migration sidecar, is authoritative from here.
+    check = onnx.load(str(onnx_path))
+    saved = {p.key: p.value for p in check.metadata_props}
+    required = {
+        "vizemes_schema",
+        "vizemes_model",
+        "vizemes_normalization",
+        "vizemes_vocabulary_json",
+        "vizemes_meta_json",
+    }
+    missing = sorted(k for k in required if not saved.get(k))
+    if missing:
+        raise RuntimeError(f"ONNX metadata verification failed; missing {missing}")
+
 
 def refresh_one(onnx_path: Path, hit_rate: Path | None) -> Path:
     json_path = onnx_path.with_suffix(".json")
@@ -131,7 +161,12 @@ def refresh_one(onnx_path: Path, hit_rate: Path | None) -> Path:
         raise FileNotFoundError(json_path)
     meta = json.loads(json_path.read_text(encoding="utf-8"))
     audio = meta.get("audio") or {}
-    ctx = int(meta.get("context_frames", 20))
+    default_ctx = 1 if "tcn" in str(meta.get("model", "")).lower() else 20
+    ctx = int(meta.get("context_frames", default_ctx))
+    meta["context_frames"] = ctx
+    meta.setdefault("n_mels", int(audio.get("n_mels", 80)))
+    meta.setdefault("input_features", ctx * int(meta["n_mels"]))
+    meta.setdefault("normalization", "per_utterance_per_mel_mean_std")
     meta["latency"] = estimate_latency(audio, ctx, float(meta.get("lookahead_ms", 0.0)))
     q = load_quality(hit_rate, onnx_path.stem, onnx_path)
     if q:

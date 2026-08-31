@@ -6,7 +6,7 @@
 #   make ORT_ROOT=/path/to/onnxruntime-linux-x64-1.20.1
 #   make ORT_ROOT=... smoke
 #
-# model.json → model.meta via tools/emit_model_meta.py (stdlib json; no C JSON parser).
+# ONNX metadata → model.meta via tools/emit_model_meta.py (no C protobuf parser).
 
 CC ?= gcc
 CFLAGS ?= -std=c11 -Wall -Wextra -O2 -fPIC
@@ -16,7 +16,7 @@ LDLIBS = -lm
 
 MEL_OBJS = frontends/mel/mel_spectrogram.o src/mel_frontend.o
 META = ../export/ci-smoke/model.meta
-META_JSON = ../export/ci-smoke/model.json
+META_ONNX = ../export/ci-smoke/model.onnx
 
 ifdef ORT_ROOT
   INCLUDES += -I$(ORT_ROOT)/include
@@ -34,8 +34,8 @@ OBJS = $(MEL_OBJS) $(RUNTIME_OBJS)
 
 all: build/libvizemes_runtime.a
 
-$(META): $(META_JSON) tools/emit_model_meta.py
-	python3 tools/emit_model_meta.py $(META_JSON) $(META)
+$(META): $(META_ONNX) tools/emit_model_meta.py ../scripts/model_contract.py
+	python3 tools/emit_model_meta.py $(META_ONNX) $(META)
 
 model-meta: $(META)
 

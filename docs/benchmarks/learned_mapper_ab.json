@@ -1,0 +1,26 @@
+{
+  "deterministic": {
+    "boundary_mean_absolute_ms": 423.8061587958175,
+    "boundary_p95_absolute_ms": 1380.0,
+    "excess_transition_jitter_hz": 0.0,
+    "frame_accuracy": 0.523749028830607,
+    "hypothesis_transitions": 18100,
+    "reference_transitions": 18218,
+    "transition_ratio": 0.9935228894499946
+  },
+  "learned": {
+    "boundary_mean_absolute_ms": 2609.782632561203,
+    "boundary_p95_absolute_ms": 7610.0,
+    "excess_transition_jitter_hz": 11.689204796001931,
+    "frame_accuracy": 0.6300369569325746,
+    "hypothesis_transitions": 40485,
+    "reference_transitions": 18218,
+    "transition_ratio": 2.222252717092985
+  },
+  "protocol": {
+    "phone_model": "tier-c/model_final.onnx",
+    "learned_mapper_training_seconds": 300,
+    "validation_utterances": 262,
+    "decision": "reject_learned_mapper_keep_deterministic"
+  }
+}

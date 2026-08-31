@@ -1,0 +1,49 @@
+{
+  "direct_viseme_tcn": {
+    "boundary_mean_absolute_ms": 2564.0525853551435,
+    "boundary_p95_absolute_ms": 7510.0,
+    "excess_transition_jitter_hz": 11.271864435251874,
+    "frame_accuracy": 0.4858891711987905,
+    "hypothesis_transitions": 39690,
+    "reference_transitions": 18218,
+    "transition_ratio": 2.178614557031507
+  },
+  "models": {
+    "direct": "godot-demo/addons/vizeme-onnxmodels/tier-b-tcn/model_final.onnx",
+    "direct_params": 505103,
+    "direct_training_seconds": 600.1504230499268,
+    "phone": "godot-demo/addons/vizeme-onnxmodels/tier-c/model_final.onnx",
+    "phone_params": 266949,
+    "phone_training_seconds": 634.864
+  },
+  "phone_tcn_deterministic": {
+    "boundary_mean_absolute_ms": 423.8061587958175,
+    "boundary_p95_absolute_ms": 1380.0,
+    "excess_transition_jitter_hz": 0.0,
+    "frame_accuracy": 0.523749028830607,
+    "hypothesis_transitions": 18100,
+    "reference_transitions": 18218,
+    "transition_ratio": 0.9935228894499946
+  },
+  "protocol": {
+    "frames": 190492,
+    "held_out_utterances": 262,
+    "hop_ms": 10.0,
+    "reference": "MFA phone intervals mapped through embedded deterministic table",
+    "subset": "test-clean"
+  },
+  "runtime": {
+    "algorithmic_lookahead_ms": {
+      "direct": 50.0,
+      "phone_pipeline": 0.0
+    },
+    "audio_seconds": 1904.92,
+    "deterministic_mapper_seconds": 7.174144418015203,
+    "direct_onnx_seconds": 2.143197580015112,
+    "direct_realtime_factor": 0.0011250853474240976,
+    "measurement": "single-process CPU wall time; ONNX sessions preloaded",
+    "phone_onnx_seconds": 1.4523817810186301,
+    "phone_pipeline_realtime_factor": 0.004528550384810823,
+    "phone_pipeline_seconds": 8.626526199033833
+  }
+}

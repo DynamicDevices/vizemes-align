@@ -8,7 +8,6 @@ const CHUNK_SAMPLES := 1600
 
 func _ready() -> void:
 	var paths := ClipProbeIo.resolve_ci_smoke_paths()
-	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
 
@@ -19,7 +18,7 @@ func _ready() -> void:
 		get_tree().quit(1)
 		return
 	if not loader.load_model(onnx_path) \
-			or not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+			or not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		get_tree().quit(1)
 		return
 

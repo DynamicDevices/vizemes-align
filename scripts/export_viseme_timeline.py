@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from export_godot_package import load_viseme_map, phones_from_textgrid, words_from_textgrid  # noqa: E402
+from model_contract import load_model_contract  # noqa: E402
 
 
 def merge_viseme_boxes(
@@ -66,11 +67,6 @@ def main() -> int:
         default=ROOT / "export" / "ci-smoke" / "viseme_timeline.json",
     )
     ap.add_argument(
-        "--model-json",
-        type=Path,
-        default=ROOT / "export" / "ci-smoke" / "model.json",
-    )
-    ap.add_argument(
         "--onnx",
         type=Path,
         default=None,
@@ -117,7 +113,8 @@ def main() -> int:
         print(f"No wav for {stem}", file=sys.stderr)
         return 1
 
-    meta = json.loads(args.model_json.read_text(encoding="utf-8"))
+    onnx_primary = args.onnx or (ROOT / "export" / "ci-smoke" / "model.onnx")
+    meta = load_model_contract(onnx_primary, require_schema=2)
     hop = float(meta["audio"]["hop_length_samples"]) / float(meta["audio"]["sample_rate"])
     id_to_name = {int(v): str(k) for k, v in meta["visemes"].items()}
     name_to_idx, phone_to_idx = load_viseme_map(args.viseme_map)
@@ -148,7 +145,6 @@ def main() -> int:
         except ValueError:
             return str(p)
 
-    onnx_primary = args.onnx or (ROOT / "export" / "ci-smoke" / "model.onnx")
     onnx_b = args.onnx_b
     if onnx_b is None:
         cand = ROOT / "export" / "ci-smoke" / "model_b.onnx"
@@ -175,7 +171,7 @@ def main() -> int:
         "subset": args.subset,
         "stem": stem,
         "wav": wav_rel,
-        "model_json": _rel(args.model_json),
+        "model_onnx": _rel(onnx_primary),
         "onnx": _rel(onnx_primary),
         "onnx_b": _rel(onnx_b) if onnx_b is not None else "",
         "label_a": label_a,

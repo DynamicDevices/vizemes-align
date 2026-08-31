@@ -6,10 +6,12 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 
 #include <mutex>
+#include <deque>
 #include <vector>
 
 struct SpeexResamplerState_;
@@ -29,11 +31,15 @@ class MelFrontend : public RefCounted {
 	int n_visemes = 0;
 	bool configured = false;
 
-	float *stream_pcm = nullptr;
+	/** Causal live path: retain only one analysis window and the current Mel context. */
+	std::deque<float> stream_pcm;
 	size_t stream_pcm_n = 0;
-	size_t stream_pcm_cap = 0;
 	size_t stream_contexts_emitted = 0;
-	std::vector<PackedFloat32Array> context_queue;
+	std::deque<PackedFloat32Array> mel_ring;
+	std::vector<double> running_mel_sum;
+	std::vector<double> running_mel_sum2;
+	size_t running_mel_frames = 0;
+	std::deque<PackedFloat32Array> context_queue;
 	mutable std::mutex stream_mu;
 
 	/** SpeexDSP resampler for mic mix_rate → model sample_rate (stateful). */
@@ -49,8 +55,6 @@ class MelFrontend : public RefCounted {
 	void destroy_resampler();
 	bool ensure_resampler(int from_rate);
 	bool apply_config();
-	Array contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const;
-	void enqueue_new_contexts(const Array &fresh);
 	PackedFloat32Array resample_mono(const float *mono, size_t n, int from_rate);
 	void append_stream_pcm(const float *pcm, size_t n);
 
@@ -62,7 +66,7 @@ public:
 	~MelFrontend() override;
 
 	/**
-	 * Configure from GDScript-owned params (parse model.json with FileAccess + JSON.parse_string).
+	 * Configure from GDScript-owned params read from canonical ONNX metadata.
 	 * input_features is derived as context_frames * n_mels when <= 0.
 	 */
 	bool configure(int p_context_frames, int p_n_mels, int p_sample_rate, int p_hop_length_samples,
@@ -108,6 +112,8 @@ public:
 
 	/** Convenience: push whole utterance and return all contexts (drains via stream queue). */
 	Array build_utterance_contexts(const PackedFloat32Array &pcm);
+	/** Full normalized [time, mel] matrix for dynamic-time models such as TCN. */
+	Dictionary build_utterance_mels(const PackedFloat32Array &pcm) const;
 
 	int get_input_features() const;
 	int get_context_frames() const;

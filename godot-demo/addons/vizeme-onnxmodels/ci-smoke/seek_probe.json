@@ -2,7 +2,7 @@
   "subset": "ci-fixture",
   "stem": "ci-0001",
   "wav": "export/ci-smoke/ci-fixture.wav",
-  "model_json": "export/ci-smoke/model.json",
+  "model_onnx": "export/ci-smoke/model.onnx",
   "onnx": "export/ci-smoke/model.onnx",
   "context_frames": 20,
   "hop_s": 0.01,

@@ -33,13 +33,12 @@ func _ready() -> void:
 	_pipe = VisemePipelineScript.new()
 	var paths: Dictionary = ClipProbeIo.resolve_model_paths(false)
 	var onnx_path := str(paths.get("onnx", ""))
-	var json_path := str(paths.get("json", ""))
 	if onnx_path.is_empty():
 		push_error("mic_lipsync: no ONNX under res://addons/vizeme-onnxmodels — run scripts/sync_vizeme_onnxmodels.sh")
 		get_tree().quit(1)
 		return
-	if not _pipe.setup(json_path, onnx_path):
-		push_error("mic_lipsync: setup failed for %s (+ json %s)" % [onnx_path, json_path])
+	if not _pipe.setup(onnx_path):
+		push_error("mic_lipsync: setup failed for %s" % onnx_path)
 		get_tree().quit(1)
 		return
 	_label.text = "Listening… model=%s via %s" % [paths.get("id", "?"), onnx_path.get_file()]
@@ -131,7 +130,7 @@ func _process(_delta: float) -> void:
 	_frames += produced
 	for _i in produced:
 		if _pipe.last_ovr.size() > 0:
-			_hard_bytes.append(VisemeUtils.soft_to_hard_byte(_pipe.last_ovr))
+			_hard_bytes.append(VisemeUtils.soft_to_preview_byte(_pipe.last_ovr))
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
 	var vad_s: String = "?"

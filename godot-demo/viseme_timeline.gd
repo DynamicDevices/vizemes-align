@@ -53,14 +53,20 @@ var _primary_src := SRC_MODEL_A
 var _secondary_src := SRC_TRAIN
 var _show_disagree := true
 var _show_hard := true
+var _show_mel := true
 ## Crossfade width for ground-truth expect transitions.
 var _train_transition_s := 0.06
 var _hard_bytes := PackedByteArray()
 var _hard_frame_s := 0.02
 var _status := ""
-var _help := "Play/Space  wheel=zoom  mid=pan  left=caret/sel  Esc  Record=mic sample"
+var _help := "Play/Space  wheel=zoom  mid=pan  left=caret/sel  M=mel  Esc  Record=mic sample"
 
 var _pcm := PackedFloat32Array()
+## Exact per-utterance-normalised Mel matrix supplied to TCN inference.
+var _mel_frames := PackedFloat32Array()
+var _mel_n_frames := 0
+var _mel_n_bins := 0
+var _mel_hop_s := 0.01
 var _view_t0 := 0.0
 var _view_t1 := 1.0
 var _sel_t0 := -1.0
@@ -591,7 +597,6 @@ func _infer_from_pcm() -> int:
 		return 1
 	var paths := _default_model_paths()
 	var onnx_path: String = paths["onnx"]
-	var json_path: String = paths["json"]
 	if not FileAccess.file_exists(onnx_path):
 		return 1
 	var mel = ClassDB.instantiate("MelFrontend")
@@ -603,13 +608,11 @@ func _infer_from_pcm() -> int:
 		return 1
 	paths = loaded["paths"]
 	onnx_path = str(paths.get("onnx", ""))
-	json_path = str(paths.get("json", ""))
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		push_error("MelFrontend configure failed for record infer")
 		return 1
+	_cache_mel_underlay(mel)
 	_names = VisemeUtils.load_id_to_name_from_onnx(loader)
-	if _names.is_empty() and not json_path.is_empty():
-		_names = VisemeUtils.load_id_to_name(json_path)
 	var use_tcn := bool(paths.get("tcn", false))
 	if not use_tcn and loader.has_method("get_metadata_value"):
 		use_tcn = str(loader.get_metadata_value("vizemes_model")).contains("tcn")
@@ -681,8 +684,9 @@ func _load_and_run() -> int:
 		return 1
 	var model_paths: Dictionary = loaded["paths"]
 	var onnx_path := str(model_paths.get("onnx", ""))
-	var json_path := str(model_paths.get("json", ""))
 	var use_tcn := bool(model_paths.get("tcn", false))
+	if not use_tcn and loader.has_method("get_metadata_value"):
+		use_tcn = str(loader.get_metadata_value("vizemes_model")).contains("tcn")
 	var onnx_b_path := ""
 	var model_dir := str(model_paths.get("dir", ""))
 	if not model_dir.is_empty():
@@ -704,15 +708,13 @@ func _load_and_run() -> int:
 		_status = "MelFrontend missing"
 		push_error(_status)
 		return 1
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		_status = "MelFrontend configure failed"
 		push_error(_status)
 		return 1
 	var names_onnx: Array = VisemeUtils.load_id_to_name_from_onnx(loader)
 	if not names_onnx.is_empty():
 		_names = names_onnx
-	elif _names.is_empty() and FileAccess.file_exists(json_path):
-		_names = VisemeUtils.load_id_to_name(json_path)
 
 	if wav_path.is_empty():
 		_status = "missing wav under res://addons/vizeme-onnxmodels/fixtures"
@@ -722,6 +724,7 @@ func _load_and_run() -> int:
 	if _pcm.is_empty():
 		_status = "empty wav"
 		return 1
+	_cache_mel_underlay(mel)
 
 	if use_tcn:
 		_series = _predict_series_tcn(loader, mel, _pcm)
@@ -736,7 +739,24 @@ func _load_and_run() -> int:
 		return 1
 
 	_series_b.clear()
-	if not use_tcn and not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
+	var explicit_b: Dictionary = ClipProbeIo.resolve_optional_model_env("VISEMES_MODEL_B_DIR")
+	if not explicit_b.is_empty():
+		var loader_b = ClassDB.instantiate("OnnxLoader")
+		var mel_b = ClassDB.instantiate("MelFrontend")
+		var path_b := str(explicit_b.get("onnx", ""))
+		if loader_b != null and mel_b != null and loader_b.load_model(path_b):
+			if VisemeUtils.configure_mel_from_onnx(mel_b, loader_b):
+				var model_b := str(loader_b.get_metadata_value("vizemes_model"))
+				if model_b.contains("tcn"):
+					_series_b = _predict_series_tcn(loader_b, mel_b, _pcm)
+				else:
+					_series_b = _predict_series(loader_b, mel_b.build_utterance_contexts(_pcm))
+				_label_b = "B:%s" % model_b
+			else:
+				push_warning("secondary model Mel contract failed: %s" % path_b)
+		else:
+			push_warning("secondary model failed to load: %s" % path_b)
+	elif not use_tcn and not onnx_b_path.is_empty() and FileAccess.file_exists(onnx_b_path):
 		var loader_b = ClassDB.instantiate("OnnxLoader")
 		if loader_b != null and loader_b.load_model(onnx_b_path):
 			var contexts_b: Array = mel.build_utterance_contexts(_pcm)
@@ -770,6 +790,8 @@ func _load_and_run() -> int:
 		_label_b if not _series_b.is_empty() else "off",
 		"yes" if not _series_train.is_empty() else "no",
 	]
+	if _mel_n_frames > 0:
+		_status += " mel=%dx%d" % [_mel_n_frames, _mel_n_bins]
 	print("viseme_timeline %s" % _status)
 	print("GODOT_VISEME_TIMELINE_OK")
 	return 0
@@ -777,7 +799,25 @@ func _load_and_run() -> int:
 
 func _rebuild_hard_bytes() -> void:
 	var t0 := float(_context_frames - 1) * _hop_s
-	_hard_bytes = VisemeUtils.series_to_hard_bytes(_series, _hop_s, t0, _hard_frame_s)
+	_hard_bytes = VisemeUtils.series_to_preview_bytes(_series, _hop_s, t0, _hard_frame_s)
+
+
+func _cache_mel_underlay(mel: Object) -> void:
+	_mel_frames = PackedFloat32Array()
+	_mel_n_frames = 0
+	_mel_n_bins = 0
+	if mel == null or not mel.has_method("build_utterance_mels"):
+		return
+	var pack: Dictionary = mel.build_utterance_mels(_pcm)
+	var frames: PackedFloat32Array = pack.get("frames", PackedFloat32Array())
+	var n_frames := int(pack.get("n_frames", 0))
+	var n_bins := int(pack.get("n_mels", 0))
+	if frames.is_empty() or n_frames <= 0 or n_bins <= 0 or frames.size() != n_frames * n_bins:
+		return
+	_mel_frames = frames
+	_mel_n_frames = n_frames
+	_mel_n_bins = n_bins
+	_mel_hop_s = _hop_s
 
 
 func _predict_series(loader, contexts: Array) -> Array:
@@ -820,7 +860,16 @@ func _predict_series_tcn(loader, mel: Object, pcm: PackedFloat32Array) -> Array:
 		row.resize(n_vis)
 		for c in n_vis:
 			row[c] = flat_logits[t * n_vis + c]
-		out.append(VisemeUtils.softmax(row))
+		out.append(row)
+	var phone_mapper := VisemeUtils.load_phone_mapper_from_onnx(loader)
+	if not phone_mapper.is_empty():
+		out = VisemeUtils.phone_logits_to_viseme_series(out, phone_mapper)
+		if out.is_empty():
+			_status = "phone posterior mapper failed"
+			return []
+	else:
+		for t in out.size():
+			out[t] = VisemeUtils.softmax(out[t])
 	_context_frames = 1
 	_hop_s = 0.01
 	return out
@@ -866,7 +915,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var k := event as InputEventKey
 		if k.keycode in [
-			KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_D, KEY_H,
+			KEY_SPACE, KEY_P, KEY_ESCAPE, KEY_R, KEY_D, KEY_H, KEY_M,
 			KEY_BRACKETLEFT, KEY_BRACKETRIGHT
 		]:
 			_handle_key(k)
@@ -899,6 +948,10 @@ func _handle_key(key: InputEventKey) -> void:
 			accept_event()
 		KEY_H:
 			_show_hard = not _show_hard
+			queue_redraw()
+			accept_event()
+		KEY_M:
+			_show_mel = not _show_mel
 			queue_redraw()
 			accept_event()
 		KEY_BRACKETLEFT:
@@ -1033,12 +1086,13 @@ func _draw() -> void:
 	if _duration_s <= 0.0:
 		return
 	# Selection caret/band is drawn by SelectOverlay (translucent child).
+	var curve_top := _plot.position.y + _plot.size.y * 0.28
+	var curve_h := _plot.size.y * 0.68
+	_draw_mel_underlay(curve_top, curve_h)
 	_draw_mfa_boxes()
 	_draw_disagree_ribbon()
 	_draw_hard_ribbon()
 
-	var curve_top := _plot.position.y + _plot.size.y * 0.28
-	var curve_h := _plot.size.y * 0.68
 	var n_v := _n_visemes()
 	var t0 := float(_context_frames - 1) * _hop_s
 	var pri := _series_for_src(_primary_src)
@@ -1147,6 +1201,30 @@ func _draw_mfa_boxes() -> void:
 			)
 
 
+func _draw_mel_underlay(top: float, height: float) -> void:
+	if not _show_mel or _mel_frames.is_empty() or _mel_n_frames <= 0 or _mel_n_bins <= 0:
+		return
+	var columns := maxi(1, int(_plot.size.x))
+	var bin_height := height / float(_mel_n_bins)
+	for column in columns:
+		var fraction := (float(column) + 0.5) / float(columns)
+		var t := _view_t0 + fraction * _view_span()
+		var frame := clampi(int(floor(t / _mel_hop_s)), 0, _mel_n_frames - 1)
+		var x := _plot.position.x + float(column)
+		for bin in _mel_n_bins:
+			var value := _mel_frames[frame * _mel_n_bins + bin]
+			## Training values are z-normalised per bin; clip ±3σ for a stable palette.
+			var energy := clampf((value + 3.0) / 6.0, 0.0, 1.0)
+			var color := Color(
+				0.08 + 0.78 * energy,
+				0.12 + 0.66 * energy * energy,
+				0.30 - 0.20 * energy,
+				0.42
+			)
+			var y := top + float(_mel_n_bins - 1 - bin) * bin_height
+			draw_rect(Rect2(x, y, 1.0, bin_height + 0.5), color)
+
+
 func _draw_disagree_ribbon() -> void:
 	if not _show_disagree or _series_b.is_empty():
 		return
@@ -1185,8 +1263,8 @@ func _draw_hard_ribbon() -> void:
 		if t1 < _view_t0 or t > _view_t1:
 			continue
 		var b: int = _hard_bytes[i]
-		var vid := VisemeUtils.hard_byte_id(b)
-		var blend := VisemeUtils.hard_byte_blend01(b)
+		var vid := VisemeUtils.preview_byte_id(b)
+		var blend := VisemeUtils.preview_byte_confidence01(b)
 		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
 		draw_rect(
 			Rect2(_t_to_x(t), y, maxf(1.0, _t_to_x(t1) - _t_to_x(t)), h),
@@ -1251,6 +1329,11 @@ func _draw_legend(n_v: int) -> void:
 			("%sdisagree A/B" % ["● " if _show_disagree else "○ "]),
 			HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(1.0, 0.45, 0.45)
 		)
+	draw_string(
+		ThemeDB.fallback_font, Vector2(lx, foot + 48.0),
+		"%s Mel underlay (M)" % ["●" if _show_mel else "○"],
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 11, Color(0.85, 0.72, 0.35)
+	)
 
 
 func _src_label(src: int) -> String:

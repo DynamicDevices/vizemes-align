@@ -1,5 +1,5 @@
 /**
- * Flat model.meta — emitted from model.json by tools/emit_model_meta.py (stdlib json).
+ * Flat model.meta — emitted from canonical ONNX metadata by emit_model_meta.py.
  * C only reads key=value lines (no JSON parser in-tree).
  */
 #ifndef VIZEMES_MODEL_META_H

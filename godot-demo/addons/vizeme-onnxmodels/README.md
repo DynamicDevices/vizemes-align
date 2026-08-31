@@ -18,9 +18,9 @@ addons/vizeme-onnxmodels/
   fixtures/         # wav + optional timeline JSON for offline quality UI
 ```
 
-Each pack should include a `model_final.onnx` (or `model.onnx`) with **embedded**
-metadata: mel settings, lag, viseme names, quality/history, date. Sidecar JSON
-is optional fallback only.
+Each pack includes a `model_final.onnx` (or `model.onnx`) with **embedded**
+metadata: model identity/docstring, Mel settings, normalization, lag, vocabulary,
+quality/history and provenance. The ONNX is the sole runtime model contract.
 
 ## Sync from training export
 
@@ -30,7 +30,7 @@ From the repo root (after training / downloading models):
 bash scripts/sync_vizeme_onnxmodels.sh
 ```
 
-That copies `export/tier-b*`, `export/ci-smoke` ONNX/JSON/timeline JSON and
+That copies `export/tier-b*`, `export/ci-smoke` ONNX/timeline/seek JSON and
 wav fixtures into this addon.
 
 ## Godot export

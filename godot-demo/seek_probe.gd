@@ -193,21 +193,10 @@ func _run_probe() -> int:
 	_stem_edit.text = str(probe.get("stem", ClipProbeIo.DEFAULT_STEM))
 
 	var model_paths := ClipProbeIo.resolve_ci_smoke_paths()
-	var json_path := str(model_paths.get("json", ""))
 	var onnx_path := str(model_paths.get("onnx", ""))
 	var wav_path := ClipProbeIo.resolve_wav_for_probe(probe)
 	var mel_l2_max := float(probe.get("mel_l2_max", 0.05))
 	var seeks: Array = probe.get("seeks", [])
-
-	var mel = ClassDB.instantiate("MelFrontend")
-	if mel == null:
-		_set_status("MelFrontend missing — build gdextension .so")
-		push_error(_status.text)
-		return 1
-	if not VisemeUtils.configure_mel_from_json(mel, json_path):
-		_set_status("MelFrontend configure failed")
-		push_error(_status.text)
-		return 1
 
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if loader == null:
@@ -216,6 +205,15 @@ func _run_probe() -> int:
 		return 1
 	if not loader.load_model(onnx_path):
 		_set_status("OnnxLoader load_model failed")
+		push_error(_status.text)
+		return 1
+	var mel = ClassDB.instantiate("MelFrontend")
+	if mel == null:
+		_set_status("MelFrontend missing — build gdextension .so")
+		push_error(_status.text)
+		return 1
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
+		_set_status("MelFrontend configure failed from ONNX metadata")
 		push_error(_status.text)
 		return 1
 
@@ -230,7 +228,7 @@ func _run_probe() -> int:
 		push_error(_status.text)
 		return 1
 
-	var id_to_name := VisemeUtils.load_id_to_name(json_path)
+	var id_to_name := VisemeUtils.load_id_to_name_from_onnx(loader)
 	_last_rows.clear()
 
 	print("seek_probe stem=%s contexts=%d seeks=%d" % [probe.get("stem", "?"), contexts.size(), seeks.size()])
