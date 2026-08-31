@@ -60,6 +60,17 @@ From the embedded ONNX `audio` block:
 - mel: `n_mels`, `n_fft`, `window_length_samples`, `hop_length_samples`, `fmin`, `fmax`  
 - ONNX input length = `context_frames * n_mels` (e.g. 20×80 = 1600)
 
+### Live Mel path
+
+`MelFrontend.push_pcm()` is causal and bounded: it performs one Mel transform
+for each newly available hop, keeps only one analysis window of PCM, and keeps
+only the model's `context_frames` of Mel vectors before flattening them for the
+MLP. Its per-bin normalization is running mean/std over frames received so far.
+This is necessarily different from the offline per-utterance normalization used
+for timeline export and training, which needs the full utterance. The load log
+prints the window, hop, overlap, tensor shape, and (for a TCN) its receptive
+history so the selected model's live contract is visible.
+
 Latency layers (see `latency` in embedded metadata):
 
 1. **Speex / MelFrontend DSP** — `mel.get_dsp_latency_seconds()` at runtime  

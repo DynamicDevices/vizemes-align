@@ -26,11 +26,13 @@ MelFrontend::~MelFrontend()
 
 void MelFrontend::clear_stream()
 {
-	::free(stream_pcm);
-	stream_pcm = nullptr;
+	stream_pcm.clear();
 	stream_pcm_n = 0;
-	stream_pcm_cap = 0;
 	stream_contexts_emitted = 0;
+	mel_ring.clear();
+	running_mel_sum.clear();
+	running_mel_sum2.clear();
+	running_mel_frames = 0;
 	context_queue.clear();
 }
 
@@ -271,105 +273,57 @@ void MelFrontend::begin_stream()
 	aec.clear_pending();
 }
 
-void MelFrontend::enqueue_new_contexts(const Array &fresh)
-{
-	for (int i = 0; i < fresh.size(); i++) {
-		context_queue.push_back(fresh[i]);
-	}
-}
-
-Array MelFrontend::contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const
-{
-	Array out;
-	if (!configured || !pcm || n_samples == 0) {
-		return out;
-	}
-
-	const int nm = n_mels;
-	const int ctx = context_frames;
-
-	size_t max_frames = n_samples / (size_t)cfg.hop_length_samples + 16;
-	float *mel = (float *)calloc(max_frames * (size_t)nm, sizeof(float));
-	if (!mel) {
-		return out;
-	}
-
-	size_t nframes = 0;
-	if (mel_spectrogram_process(pcm, n_samples, mel, &nframes) < 0 || nframes < (size_t)ctx) {
-		::free(mel);
-		return out;
-	}
-
-	float *mu = (float *)calloc((size_t)nm, sizeof(float));
-	float *sd = (float *)calloc((size_t)nm, sizeof(float));
-	if (!mu || !sd) {
-		::free(mu);
-		::free(sd);
-		::free(mel);
-		return out;
-	}
-	for (int j = 0; j < nm; j++) {
-		double sum = 0.0;
-		double sum2 = 0.0;
-		for (size_t t = 0; t < nframes; t++) {
-			double v = (double)mel[t * (size_t)nm + (size_t)j];
-			sum += v;
-			sum2 += v * v;
-		}
-		mu[j] = (float)(sum / (double)nframes);
-		double var = sum2 / (double)nframes - (double)mu[j] * (double)mu[j];
-		if (var < 0.0) {
-			var = 0.0;
-		}
-		sd[j] = (float)sqrt(var) + 1e-5f;
-	}
-	for (size_t t = 0; t < nframes; t++) {
-		for (int j = 0; j < nm; j++) {
-			size_t idx = t * (size_t)nm + (size_t)j;
-			mel[idx] = (mel[idx] - mu[j]) / sd[j];
-		}
-	}
-	::free(mu);
-	::free(sd);
-
-	const size_t n_contexts = nframes - (size_t)ctx + 1;
-	for (size_t ci = skip_contexts; ci < n_contexts; ci++) {
-		size_t i = ci + (size_t)ctx - 1;
-		PackedFloat32Array flat;
-		flat.resize(input_features);
-		for (int f = 0; f < ctx; f++) {
-			size_t frame_idx = i - (size_t)ctx + 1 + (size_t)f;
-			for (int j = 0; j < nm; j++) {
-				flat[f * nm + j] = mel[frame_idx * (size_t)nm + (size_t)j];
-			}
-		}
-		out.push_back(flat);
-	}
-
-	::free(mel);
-	return out;
-}
-
 void MelFrontend::append_stream_pcm(const float *pcm, size_t n)
 {
 	if (!pcm || n == 0) {
 		return;
 	}
-	if (stream_pcm_n + n > stream_pcm_cap) {
-		size_t need = stream_pcm_n + n;
-		float *nb = (float *)realloc(stream_pcm, need * sizeof(float));
-		if (!nb) {
+	stream_pcm.insert(stream_pcm.end(), pcm, pcm + n);
+	stream_pcm_n += n;
+	if (running_mel_sum.empty()) {
+		running_mel_sum.resize((size_t)n_mels, 0.0);
+		running_mel_sum2.resize((size_t)n_mels, 0.0);
+	}
+	while (stream_pcm.size() >= (size_t)cfg.window_length_samples) {
+		std::vector<float> window(stream_pcm.begin(),
+				stream_pcm.begin() + (ptrdiff_t)cfg.window_length_samples);
+		PackedFloat32Array mel;
+		mel.resize(n_mels);
+		if (!ops || !ops->process_frame || ops->process_frame(window.data(), mel.ptrw()) != 0) {
+			UtilityFunctions::push_error("MelFrontend: incremental Mel transform failed");
 			return;
 		}
-		stream_pcm = nb;
-		stream_pcm_cap = need;
+		running_mel_frames++;
+		for (int m = 0; m < n_mels; m++) {
+			const double value = (double)mel[m];
+			running_mel_sum[(size_t)m] += value;
+			running_mel_sum2[(size_t)m] += value * value;
+			const double mean = running_mel_sum[(size_t)m] / (double)running_mel_frames;
+			double variance = running_mel_sum2[(size_t)m] / (double)running_mel_frames - mean * mean;
+			if (variance < 0.0) {
+				variance = 0.0;
+			}
+			mel[m] = (float)((value - mean) / (std::sqrt(variance) + 1e-5));
+		}
+		mel_ring.push_back(mel);
+		if (mel_ring.size() > (size_t)context_frames) {
+			mel_ring.pop_front();
+		}
+		if (mel_ring.size() == (size_t)context_frames) {
+			PackedFloat32Array flat;
+			flat.resize(input_features);
+			for (int frame = 0; frame < context_frames; frame++) {
+				for (int mel_bin = 0; mel_bin < n_mels; mel_bin++) {
+					flat[frame * n_mels + mel_bin] = mel_ring[(size_t)frame][mel_bin];
+				}
+			}
+			context_queue.push_back(flat);
+			stream_contexts_emitted++;
+		}
+		for (int sample = 0; sample < cfg.hop_length_samples; sample++) {
+			stream_pcm.pop_front();
+		}
 	}
-	memcpy(stream_pcm + stream_pcm_n, pcm, n * sizeof(float));
-	stream_pcm_n += n;
-
-	Array fresh = contexts_from_pcm(stream_pcm, stream_pcm_n, stream_contexts_emitted);
-	stream_contexts_emitted += (size_t)fresh.size();
-	enqueue_new_contexts(fresh);
 }
 
 void MelFrontend::push_pcm(const PackedFloat32Array &pcm)
@@ -473,7 +427,7 @@ PackedFloat32Array MelFrontend::get_next_context()
 		return PackedFloat32Array();
 	}
 	PackedFloat32Array front = context_queue.front();
-	context_queue.erase(context_queue.begin());
+	context_queue.pop_front();
 	return front;
 }
 
@@ -489,8 +443,8 @@ float MelFrontend::last_context_time_offset() const
 	}
 	const size_t next_ci = stream_contexts_emitted - queued;
 	const size_t end_frame = next_ci + (size_t)context_frames - 1;
-	const double context_end_s =
-			((double)(end_frame + 1) * (double)cfg.hop_length_samples) / (double)cfg.sample_rate;
+	const double context_end_s = ((double)end_frame * (double)cfg.hop_length_samples +
+			(double)cfg.window_length_samples) / (double)cfg.sample_rate;
 	const double now_s = (double)stream_pcm_n / (double)cfg.sample_rate;
 	double off = now_s - context_end_s;
 	if (off < 0.0) {

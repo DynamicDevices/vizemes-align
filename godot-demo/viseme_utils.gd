@@ -295,6 +295,51 @@ static func configure_mel_from_onnx(mel: Object, loader: Object) -> bool:
 	return false
 
 
+## Print the ONNX input contract once at load, including the time history implied
+## by a causal TCN's dilated convolution stack.
+static func print_onnx_input_summary(loader: Object) -> void:
+	if loader == null or not loader.has_method("get_metadata_value"):
+		return
+	var blob := str(loader.get_metadata_value("vizemes_meta_json"))
+	var data: Variant = JSON.parse_string(blob)
+	if typeof(data) != TYPE_DICTIONARY:
+		return
+	var meta: Dictionary = data
+	var audio: Dictionary = meta.get("audio", {})
+	var sample_rate := int(audio.get("sample_rate", 0))
+	var hop_samples := int(audio.get("hop_length_samples", 0))
+	var window_samples := int(audio.get("window_length_samples", 0))
+	var n_mels := int(meta.get("n_mels", audio.get("n_mels", 0)))
+	var context_frames := int(meta.get("context_frames", 0))
+	var model_name := str(meta.get("model", "unknown"))
+	if sample_rate <= 0 or hop_samples <= 0 or window_samples <= 0 or n_mels <= 0:
+		return
+	var hop_ms := 1000.0 * float(hop_samples) / float(sample_rate)
+	var window_ms := 1000.0 * float(window_samples) / float(sample_rate)
+	var overlap_ms := window_ms - hop_ms
+	if model_name == "viseme_tcn":
+		var layers := int(meta.get("layers", 0))
+		var kernel := int(meta.get("kernel_size", 0))
+		var receptive_frames := 1
+		if layers > 0 and kernel > 0:
+			receptive_frames += 2 * (kernel - 1) * ((1 << layers) - 1)
+		print(
+			"Vizemes ONNX input: model=%s mel=[time,%d]; window=%.1fms hop=%.1fms "
+			% [model_name, n_mels, window_ms, hop_ms]
+			+ "overlap=%.1fms; TCN input=[batch,time,%d], receptive_history=%d hops (%.1fms)."
+			% [overlap_ms, n_mels, receptive_frames, float(receptive_frames) * hop_ms]
+		)
+		return
+	var input_features := int(meta.get("input_features", context_frames * n_mels))
+	var context_span_ms := window_ms + float(maxi(0, context_frames - 1)) * hop_ms
+	print(
+		"Vizemes ONNX input: model=%s mel=[%d,%d] flattened=%d; window=%.1fms hop=%.1fms "
+		% [model_name, context_frames, n_mels, input_features, window_ms, hop_ms]
+		+ "overlap=%.1fms; context_span=%.1fms."
+		% [overlap_ms, context_span_ms]
+	)
+
+
 static func load_id_to_name_from_onnx(loader: Object) -> Array:
 	if loader == null or not loader.has_method("get_metadata_value"):
 		return []

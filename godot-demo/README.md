@@ -105,6 +105,7 @@ Then open `viseme_timeline.tscn` (F6) — primary quality UI — or `seek_probe.
 - Wheel zoom, middle-drag pan, left-drag select, Space/P play, Esc clear, R reset.
 - A/B toggle models (when a secondary pack is set); D toggles the argmax-disagreement ribbon; **H** toggles the local ID+confidence preview ribbon. That preview byte is not the sparse Opus boundary-event wire contract.
 - **T** drives the top face from MFA/training expect boxes (quality ceiling) instead of ONNX A; **[** / **]** adjust crossfade width at box boundaries (default 60 ms).
+- **M** toggles the 80-bin, per-utterance-normalised Mel spectrogram underlay. It is the same matrix supplied to the TCN, so its time axis and values match the model input rather than a separate display analysis.
 - **Sample / primary / overlay OptionButtons** (Julian 947): pick a stem or mic recording; primary drives the top face (Ground truth / Model A / Model B / Hidden); overlay is the faded compare series. Ground truth is disabled when the sample has no MFA timeline.
 
 **Companion:** `seek_probe.tscn` — side-by-side expect vs got; full MEL dumps under

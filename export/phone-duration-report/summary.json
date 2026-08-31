@@ -1,0 +1,399 @@
+{
+  "subset": "test-clean",
+  "stress_collapsed": true,
+  "textgrids": 2620,
+  "phones": [
+    {
+      "phone": "AA",
+      "count": 3755,
+      "mean_ms": 112.967,
+      "median_ms": 110.0,
+      "stddev_ms": 55.062,
+      "min_ms": 30.0,
+      "p90_ms": 180.0,
+      "max_ms": 620.0
+    },
+    {
+      "phone": "AE",
+      "count": 5501,
+      "mean_ms": 99.038,
+      "median_ms": 90.0,
+      "stddev_ms": 52.742,
+      "min_ms": 30.0,
+      "p90_ms": 170.0,
+      "max_ms": 400.0
+    },
+    {
+      "phone": "AH",
+      "count": 20030,
+      "mean_ms": 58.212,
+      "median_ms": 50.0,
+      "stddev_ms": 29.621,
+      "min_ms": 10.0,
+      "p90_ms": 90.0,
+      "max_ms": 420.0
+    },
+    {
+      "phone": "AO",
+      "count": 1677,
+      "mean_ms": 103.202,
+      "median_ms": 90.0,
+      "stddev_ms": 59.516,
+      "min_ms": 30.0,
+      "p90_ms": 180.0,
+      "max_ms": 460.0
+    },
+    {
+      "phone": "AW",
+      "count": 1043,
+      "mean_ms": 165.849,
+      "median_ms": 150.0,
+      "stddev_ms": 65.198,
+      "min_ms": 30.0,
+      "p90_ms": 250.0,
+      "max_ms": 450.0
+    },
+    {
+      "phone": "AY",
+      "count": 3450,
+      "mean_ms": 144.681,
+      "median_ms": 130.0,
+      "stddev_ms": 67.937,
+      "min_ms": 30.0,
+      "p90_ms": 230.0,
+      "max_ms": 560.0
+    },
+    {
+      "phone": "B",
+      "count": 3334,
+      "mean_ms": 63.959,
+      "median_ms": 60.0,
+      "stddev_ms": 26.542,
+      "min_ms": 10.0,
+      "p90_ms": 100.0,
+      "max_ms": 240.0
+    },
+    {
+      "phone": "CH",
+      "count": 1116,
+      "mean_ms": 128.504,
+      "median_ms": 120.0,
+      "stddev_ms": 42.374,
+      "min_ms": 30.0,
+      "p90_ms": 180.0,
+      "max_ms": 350.0
+    },
+    {
+      "phone": "D",
+      "count": 9083,
+      "mean_ms": 61.247,
+      "median_ms": 50.0,
+      "stddev_ms": 29.321,
+      "min_ms": 10.0,
+      "p90_ms": 100.0,
+      "max_ms": 370.0
+    },
+    {
+      "phone": "DH",
+      "count": 6010,
+      "mean_ms": 47.817,
+      "median_ms": 40.0,
+      "stddev_ms": 19.746,
+      "min_ms": 10.0,
+      "p90_ms": 70.0,
+      "max_ms": 290.0
+    },
+    {
+      "phone": "EH",
+      "count": 5646,
+      "mean_ms": 81.667,
+      "median_ms": 70.0,
+      "stddev_ms": 40.428,
+      "min_ms": 10.0,
+      "p90_ms": 130.0,
+      "max_ms": 520.0
+    },
+    {
+      "phone": "ER",
+      "count": 5429,
+      "mean_ms": 101.741,
+      "median_ms": 90.0,
+      "stddev_ms": 55.029,
+      "min_ms": 10.0,
+      "p90_ms": 180.0,
+      "max_ms": 470.0
+    },
+    {
+      "phone": "EY",
+      "count": 2930,
+      "mean_ms": 130.41,
+      "median_ms": 120.0,
+      "stddev_ms": 60.302,
+      "min_ms": 30.0,
+      "p90_ms": 210.0,
+      "max_ms": 480.0
+    },
+    {
+      "phone": "F",
+      "count": 3553,
+      "mean_ms": 108.005,
+      "median_ms": 100.0,
+      "stddev_ms": 40.093,
+      "min_ms": 30.0,
+      "p90_ms": 160.0,
+      "max_ms": 430.0
+    },
+    {
+      "phone": "G",
+      "count": 1637,
+      "mean_ms": 76.378,
+      "median_ms": 70.0,
+      "stddev_ms": 27.179,
+      "min_ms": 30.0,
+      "p90_ms": 110.0,
+      "max_ms": 230.0
+    },
+    {
+      "phone": "HH",
+      "count": 4075,
+      "mean_ms": 75.939,
+      "median_ms": 70.0,
+      "stddev_ms": 36.969,
+      "min_ms": 10.0,
+      "p90_ms": 120.0,
+      "max_ms": 310.0
+    },
+    {
+      "phone": "IH",
+      "count": 11916,
+      "mean_ms": 66.178,
+      "median_ms": 60.0,
+      "stddev_ms": 33.318,
+      "min_ms": 10.0,
+      "p90_ms": 110.0,
+      "max_ms": 410.0
+    },
+    {
+      "phone": "IY",
+      "count": 7072,
+      "mean_ms": 98.787,
+      "median_ms": 80.0,
+      "stddev_ms": 56.564,
+      "min_ms": 30.0,
+      "p90_ms": 180.0,
+      "max_ms": 530.0
+    },
+    {
+      "phone": "JH",
+      "count": 886,
+      "mean_ms": 102.833,
+      "median_ms": 90.0,
+      "stddev_ms": 41.75,
+      "min_ms": 30.0,
+      "p90_ms": 150.0,
+      "max_ms": 350.0
+    },
+    {
+      "phone": "K",
+      "count": 5252,
+      "mean_ms": 97.359,
+      "median_ms": 90.0,
+      "stddev_ms": 36.763,
+      "min_ms": 30.0,
+      "p90_ms": 150.0,
+      "max_ms": 320.0
+    },
+    {
+      "phone": "L",
+      "count": 7854,
+      "mean_ms": 81.425,
+      "median_ms": 70.0,
+      "stddev_ms": 45.073,
+      "min_ms": 30.0,
+      "p90_ms": 130.0,
+      "max_ms": 810.0
+    },
+    {
+      "phone": "M",
+      "count": 5619,
+      "mean_ms": 74.39,
+      "median_ms": 70.0,
+      "stddev_ms": 30.161,
+      "min_ms": 20.0,
+      "p90_ms": 110.0,
+      "max_ms": 280.0
+    },
+    {
+      "phone": "N",
+      "count": 13752,
+      "mean_ms": 64.357,
+      "median_ms": 60.0,
+      "stddev_ms": 34.988,
+      "min_ms": 10.0,
+      "p90_ms": 110.0,
+      "max_ms": 530.0
+    },
+    {
+      "phone": "NG",
+      "count": 1951,
+      "mean_ms": 87.114,
+      "median_ms": 80.0,
+      "stddev_ms": 40.898,
+      "min_ms": 30.0,
+      "p90_ms": 140.0,
+      "max_ms": 360.0
+    },
+    {
+      "phone": "OW",
+      "count": 2460,
+      "mean_ms": 132.589,
+      "median_ms": 120.0,
+      "stddev_ms": 69.816,
+      "min_ms": 30.0,
+      "p90_ms": 220.0,
+      "max_ms": 720.0
+    },
+    {
+      "phone": "OY",
+      "count": 186,
+      "mean_ms": 182.903,
+      "median_ms": 160.0,
+      "stddev_ms": 86.318,
+      "min_ms": 60.0,
+      "p90_ms": 300.0,
+      "max_ms": 560.0
+    },
+    {
+      "phone": "P",
+      "count": 3627,
+      "mean_ms": 98.26,
+      "median_ms": 90.0,
+      "stddev_ms": 33.91,
+      "min_ms": 30.0,
+      "p90_ms": 140.0,
+      "max_ms": 290.0
+    },
+    {
+      "phone": "R",
+      "count": 8222,
+      "mean_ms": 73.41,
+      "median_ms": 60.0,
+      "stddev_ms": 39.52,
+      "min_ms": 10.0,
+      "p90_ms": 120.0,
+      "max_ms": 310.0
+    },
+    {
+      "phone": "S",
+      "count": 9146,
+      "mean_ms": 117.45,
+      "median_ms": 110.0,
+      "stddev_ms": 46.055,
+      "min_ms": 30.0,
+      "p90_ms": 170.0,
+      "max_ms": 430.0
+    },
+    {
+      "phone": "SH",
+      "count": 1583,
+      "mean_ms": 126.747,
+      "median_ms": 120.0,
+      "stddev_ms": 32.489,
+      "min_ms": 30.0,
+      "p90_ms": 160.0,
+      "max_ms": 300.0
+    },
+    {
+      "phone": "T",
+      "count": 13183,
+      "mean_ms": 74.339,
+      "median_ms": 70.0,
+      "stddev_ms": 37.789,
+      "min_ms": 10.0,
+      "p90_ms": 130.0,
+      "max_ms": 390.0
+    },
+    {
+      "phone": "TH",
+      "count": 1294,
+      "mean_ms": 96.878,
+      "median_ms": 90.0,
+      "stddev_ms": 45.773,
+      "min_ms": 30.0,
+      "p90_ms": 150.0,
+      "max_ms": 340.0
+    },
+    {
+      "phone": "UH",
+      "count": 954,
+      "mean_ms": 63.878,
+      "median_ms": 60.0,
+      "stddev_ms": 34.062,
+      "min_ms": 10.0,
+      "p90_ms": 110.0,
+      "max_ms": 320.0
+    },
+    {
+      "phone": "UW",
+      "count": 2466,
+      "mean_ms": 94.011,
+      "median_ms": 80.0,
+      "stddev_ms": 60.934,
+      "min_ms": 10.0,
+      "p90_ms": 170.0,
+      "max_ms": 470.0
+    },
+    {
+      "phone": "V",
+      "count": 4007,
+      "mean_ms": 67.881,
+      "median_ms": 60.0,
+      "stddev_ms": 28.483,
+      "min_ms": 30.0,
+      "p90_ms": 100.0,
+      "max_ms": 420.0
+    },
+    {
+      "phone": "W",
+      "count": 4169,
+      "mean_ms": 68.321,
+      "median_ms": 60.0,
+      "stddev_ms": 33.44,
+      "min_ms": 10.0,
+      "p90_ms": 110.0,
+      "max_ms": 290.0
+    },
+    {
+      "phone": "Y",
+      "count": 1421,
+      "mean_ms": 73.934,
+      "median_ms": 60.0,
+      "stddev_ms": 40.531,
+      "min_ms": 30.0,
+      "p90_ms": 130.0,
+      "max_ms": 370.0
+    },
+    {
+      "phone": "Z",
+      "count": 5497,
+      "mean_ms": 90.042,
+      "median_ms": 80.0,
+      "stddev_ms": 40.783,
+      "min_ms": 30.0,
+      "p90_ms": 140.0,
+      "max_ms": 400.0
+    },
+    {
+      "phone": "ZH",
+      "count": 92,
+      "mean_ms": 96.739,
+      "median_ms": 100.0,
+      "stddev_ms": 17.075,
+      "min_ms": 50.0,
+      "p90_ms": 119.0,
+      "max_ms": 170.0
+    }
+  ],
+  "plot": "phone_duration_distributions.png",
+  "method": "MFA phone TextGrid interval duration; this measures aligned acoustic-phone spans, not visual transition durations."
+}

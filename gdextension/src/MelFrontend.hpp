@@ -11,6 +11,7 @@
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 
 #include <mutex>
+#include <deque>
 #include <vector>
 
 struct SpeexResamplerState_;
@@ -30,11 +31,15 @@ class MelFrontend : public RefCounted {
 	int n_visemes = 0;
 	bool configured = false;
 
-	float *stream_pcm = nullptr;
+	/** Causal live path: retain only one analysis window and the current Mel context. */
+	std::deque<float> stream_pcm;
 	size_t stream_pcm_n = 0;
-	size_t stream_pcm_cap = 0;
 	size_t stream_contexts_emitted = 0;
-	std::vector<PackedFloat32Array> context_queue;
+	std::deque<PackedFloat32Array> mel_ring;
+	std::vector<double> running_mel_sum;
+	std::vector<double> running_mel_sum2;
+	size_t running_mel_frames = 0;
+	std::deque<PackedFloat32Array> context_queue;
 	mutable std::mutex stream_mu;
 
 	/** SpeexDSP resampler for mic mix_rate → model sample_rate (stateful). */
@@ -50,8 +55,6 @@ class MelFrontend : public RefCounted {
 	void destroy_resampler();
 	bool ensure_resampler(int from_rate);
 	bool apply_config();
-	Array contexts_from_pcm(const float *pcm, size_t n_samples, size_t skip_contexts) const;
-	void enqueue_new_contexts(const Array &fresh);
 	PackedFloat32Array resample_mono(const float *mono, size_t n, int from_rate);
 	void append_stream_pcm(const float *pcm, size_t n);
 

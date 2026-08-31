@@ -29,6 +29,7 @@ func setup(onnx_path: String) -> bool:
 	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		push_error("VisemePipeline: MelFrontend configure failed")
 		return false
+	VisemeUtils.print_onnx_input_summary(loader)
 	if id_to_name.is_empty():
 		push_error("VisemePipeline: no viseme names in ONNX metadata")
 		return false

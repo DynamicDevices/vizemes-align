@@ -3,7 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 ADDON="$ROOT/godot-demo/addons/vizeme-onnxmodels"
-mkdir -p "$ADDON/tier-b" "$ADDON/tier-b-tcn" "$ADDON/ci-smoke" "$ADDON/fixtures"
+mkdir -p "$ADDON/tier-b" "$ADDON/tier-b-tcn" "$ADDON/one-stem-overfit" "$ADDON/ci-smoke" "$ADDON/fixtures"
 copy_pack() {
   local src="$1" dest="$2"
   [[ -d "$src" ]] || return 0
@@ -15,6 +15,7 @@ copy_pack() {
 }
 copy_pack "$ROOT/export/tier-b" "$ADDON/tier-b"
 copy_pack "$ROOT/export/tier-b-tcn" "$ADDON/tier-b-tcn"
+copy_pack "$ROOT/export/one-stem-overfit" "$ADDON/one-stem-overfit"
 copy_pack "$ROOT/export/ci-smoke" "$ADDON/ci-smoke"
 # Wav fixtures for offline timeline / seek (stay inside Godot project)
 mkdir -p "$ADDON/fixtures"
