@@ -30,6 +30,19 @@ const LINE_COLORS: Array[Color] = [
 	Color(0.70, 0.50, 0.30),
 ]
 
+## Perceptually ordered inferno-style palette: quiet bins stay dark while
+## harmonics move through purple/magenta to orange and pale yellow.
+const MEL_COLORS: Array[Color] = [
+	Color("#08051d"),
+	Color("#270b52"),
+	Color("#5c167f"),
+	Color("#982d80"),
+	Color("#d4486a"),
+	Color("#f4774f"),
+	Color("#fbb43f"),
+	Color("#fcf6bd"),
+]
+
 ## Source ids for primary/secondary OptionButtons (Julian 947).
 const SRC_TRAIN := 0
 const SRC_MODEL_A := 1
@@ -1233,14 +1246,15 @@ func _draw_mel_underlay(top: float, height: float) -> void:
 		var x := _plot.position.x + float(column)
 		for bin in _mel_n_bins:
 			var value := _mel_frames[frame * _mel_n_bins + bin]
-			## Training values are z-normalised per bin; clip ±3σ for a stable palette.
-			var energy := clampf((value + 3.0) / 6.0, 0.0, 1.0)
-			var color := Color(
-				0.08 + 0.78 * energy,
-				0.12 + 0.66 * energy * energy,
-				0.30 - 0.20 * energy,
-				0.42
+			## Training values are z-normalised per bin. Keep the mean near the
+			## dark-purple end and reserve orange/yellow for strong harmonics.
+			var energy := pow(clampf((value + 1.5) / 5.0, 0.0, 1.0), 1.25)
+			var palette_pos := energy * float(MEL_COLORS.size() - 1)
+			var color_index := mini(int(floor(palette_pos)), MEL_COLORS.size() - 2)
+			var color := MEL_COLORS[color_index].lerp(
+				MEL_COLORS[color_index + 1], palette_pos - float(color_index)
 			)
+			color.a = 0.72
 			var y := top + float(_mel_n_bins - 1 - bin) * bin_height
 			draw_rect(Rect2(x, y, 1.0, bin_height + 0.5), color)
 
