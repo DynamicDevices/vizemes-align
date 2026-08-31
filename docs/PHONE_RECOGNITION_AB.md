@@ -118,6 +118,14 @@ The checked-in JSON is the exact report. Godot's headless timeline has loaded
 both models over the same clip and printed `GODOT_VISEME_TIMELINE_OK`; Julian's
 visual/manual preference is the remaining acceptance gate.
 
+The specified five-minute learned stage-B challenger was then trained against
+this final phone model and evaluated on the same 262 utterances. Although frame
+accuracy increased from 0.524 to 0.630, it failed every stability/timing gate:
+mean boundary error increased from 424 ms to 2610 ms, p95 from 1380 ms to
+7610 ms, transition ratio from 0.994 to 2.222, and excess jitter from 0 to
+11.69 Hz. It is therefore rejected and is not included in the runtime pack.
+The exact comparison is `docs/benchmarks/learned_mapper_ab.json`.
+
 [mfa-paper]: https://montreal-forced-aligner.readthedocs.io/en/v3.3.0/_downloads/998b0c31eadaf048e8e3de805b9ef8e6/MFA_paper_Interspeech2017.pdf
 [mfa-config]: https://montreal-forced-aligner.readthedocs.io/en/v3.2.3/user_guide/configuration/acoustic_modeling.html
 [mfa-model]: https://montreal-forced-aligner.readthedocs.io/en/stable/reference/acoustic_modeling/index.html
