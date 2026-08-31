@@ -6,6 +6,7 @@
 
 #include <godot_cpp/classes/ref_counted.hpp>
 #include <godot_cpp/variant/array.hpp>
+#include <godot_cpp/variant/dictionary.hpp>
 #include <godot_cpp/variant/packed_float32_array.hpp>
 #include <godot_cpp/variant/packed_vector2_array.hpp>
 
@@ -108,6 +109,8 @@ public:
 
 	/** Convenience: push whole utterance and return all contexts (drains via stream queue). */
 	Array build_utterance_contexts(const PackedFloat32Array &pcm);
+	/** Full normalized [time, mel] matrix for dynamic-time models such as TCN. */
+	Dictionary build_utterance_mels(const PackedFloat32Array &pcm) const;
 
 	int get_input_features() const;
 	int get_context_frames() const;

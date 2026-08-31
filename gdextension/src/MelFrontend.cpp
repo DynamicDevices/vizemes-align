@@ -108,6 +108,8 @@ void MelFrontend::_bind_methods()
 	ClassDB::bind_method(D_METHOD("last_context_time_offset"), &MelFrontend::last_context_time_offset);
 	ClassDB::bind_method(D_METHOD("build_utterance_contexts", "pcm"),
 			&MelFrontend::build_utterance_contexts);
+	ClassDB::bind_method(D_METHOD("build_utterance_mels", "pcm"),
+			&MelFrontend::build_utterance_mels);
 	ClassDB::bind_method(D_METHOD("get_input_features"), &MelFrontend::get_input_features);
 	ClassDB::bind_method(D_METHOD("get_context_frames"), &MelFrontend::get_context_frames);
 	ClassDB::bind_method(D_METHOD("get_n_mels"), &MelFrontend::get_n_mels);
@@ -505,6 +507,55 @@ Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
 	while (count_available_contexts() > 0) {
 		out.push_back(get_next_context());
 	}
+	return out;
+}
+
+Dictionary MelFrontend::build_utterance_mels(const PackedFloat32Array &pcm) const
+{
+	std::lock_guard<std::mutex> lock(stream_mu);
+	Dictionary out;
+	PackedFloat32Array frames;
+	out["frames"] = frames;
+	out["n_frames"] = 0;
+	out["n_mels"] = 0;
+	if (!configured || pcm.is_empty() || n_mels <= 0 || cfg.hop_length_samples <= 0) {
+		return out;
+	}
+
+	const size_t max_frames = (size_t)pcm.size() / (size_t)cfg.hop_length_samples + 16;
+	std::vector<float> mel(max_frames * (size_t)n_mels, 0.f);
+	size_t frame_count = 0;
+	if (mel_spectrogram_process(pcm.ptr(), (size_t)pcm.size(), mel.data(), &frame_count) < 0 ||
+			frame_count == 0 || frame_count > max_frames) {
+		return out;
+	}
+
+	// Match scripts/build_train_tensors.py: normalize each utterance per mel bin.
+	for (int m = 0; m < n_mels; m++) {
+		double sum = 0.0;
+		double sum2 = 0.0;
+		for (size_t t = 0; t < frame_count; t++) {
+			const double v = (double)mel[t * (size_t)n_mels + (size_t)m];
+			sum += v;
+			sum2 += v * v;
+		}
+		const double mean = sum / (double)frame_count;
+		double variance = sum2 / (double)frame_count - mean * mean;
+		if (variance < 0.0) {
+			variance = 0.0;
+		}
+		const double scale = std::sqrt(variance) + 1e-5;
+		for (size_t t = 0; t < frame_count; t++) {
+			const size_t idx = t * (size_t)n_mels + (size_t)m;
+			mel[idx] = (float)(((double)mel[idx] - mean) / scale);
+		}
+	}
+
+	frames.resize((int)(frame_count * (size_t)n_mels));
+	std::memcpy(frames.ptrw(), mel.data(), frame_count * (size_t)n_mels * sizeof(float));
+	out["frames"] = frames;
+	out["n_frames"] = (int)frame_count;
+	out["n_mels"] = n_mels;
 	return out;
 }
 
