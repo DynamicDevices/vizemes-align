@@ -57,6 +57,9 @@ jobs:
       - name: install python deps
         run: pip install -r requirements.txt
 
+      - name: ONNX model contract is self-contained
+        run: python scripts/test_model_contract.py
+
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
 

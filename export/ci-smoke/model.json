@@ -36,5 +36,17 @@
   "frames_trained": 162,
   "utterances": 1,
   "onnx": "model.onnx",
-  "note": "Input is flattened causal mel context: (batch, context*n_mels). Runtime mel SoT: gdextension/frontends/mel (host C; training via scripts/mel_features_c.py)."
+  "note": "Input is flattened causal mel context: (batch, context*n_mels). Runtime mel SoT: gdextension/frontends/mel (host C; training via scripts/mel_features_c.py).",
+  "normalization": "per_utterance_per_mel_mean_std",
+  "latency": {
+    "hop_seconds": 0.01,
+    "window_seconds": 0.025,
+    "mel_context_seconds": 0.215,
+    "label_lookahead_ms": 0.0,
+    "label_lookahead_seconds": 0.0,
+    "speex_dsp_seconds": "runtime: MelFrontend.get_dsp_latency_seconds() (resampler + optional AEC/preprocess frames; often ~0 if bypassed)",
+    "playback_compensation_hint_seconds": 0.215,
+    "note": "Feed mono float PCM at sample_rate with n_mels/hop/window matching audio{}. ONNX input is flattened context_frames * n_mels. ONNX metadata_props are the runtime source of truth for MelFrontend.configure."
+  },
+  "metadata_updated_utc": "2026-08-31T11:33:16Z"
 }

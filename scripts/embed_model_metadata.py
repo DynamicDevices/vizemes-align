@@ -161,7 +161,12 @@ def refresh_one(onnx_path: Path, hit_rate: Path | None) -> Path:
         raise FileNotFoundError(json_path)
     meta = json.loads(json_path.read_text(encoding="utf-8"))
     audio = meta.get("audio") or {}
-    ctx = int(meta.get("context_frames", 20))
+    default_ctx = 1 if "tcn" in str(meta.get("model", "")).lower() else 20
+    ctx = int(meta.get("context_frames", default_ctx))
+    meta["context_frames"] = ctx
+    meta.setdefault("n_mels", int(audio.get("n_mels", 80)))
+    meta.setdefault("input_features", ctx * int(meta["n_mels"]))
+    meta.setdefault("normalization", "per_utterance_per_mel_mean_std")
     meta["latency"] = estimate_latency(audio, ctx, float(meta.get("lookahead_ms", 0.0)))
     q = load_quality(hit_rate, onnx_path.stem, onnx_path)
     if q:
