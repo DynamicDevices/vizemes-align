@@ -2,7 +2,7 @@
   "subset": "timeline-demo",
   "stem": "1320-122617-0010",
   "wav": "export/ci-smoke/timeline_1320-122617-0010.wav",
-  "model_json": "export/ci-smoke/model.json",
+  "model_onnx": "export/ci-smoke/model.onnx",
   "onnx": "export/ci-smoke/model.onnx",
   "onnx_b": "export/ci-smoke/model_b.onnx",
   "label_a": "A:hidden64",

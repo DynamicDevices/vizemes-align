@@ -63,7 +63,7 @@ public:
 	~MelFrontend() override;
 
 	/**
-	 * Configure from GDScript-owned params (parse model.json with FileAccess + JSON.parse_string).
+	 * Configure from GDScript-owned params read from canonical ONNX metadata.
 	 * input_features is derived as context_frames * n_mels when <= 0.
 	 */
 	bool configure(int p_context_frames, int p_n_mels, int p_sample_rate, int p_hop_length_samples,

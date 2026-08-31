@@ -2,7 +2,7 @@
   "subset": "test-clean",
   "stem": "8555-284447-0002",
   "wav": "export/ci-smoke/timeline_8555-284447-0002.wav",
-  "model_json": "export/tier-b/model.json",
+  "model_onnx": "export/tier-b/model.onnx",
   "onnx": "export/tier-b/model_final.onnx",
   "onnx_b": "export/tier-b/model_10m.onnx",
   "label_a": "A:tier-b-final",

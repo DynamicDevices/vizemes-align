@@ -9,7 +9,7 @@ copy_pack() {
   [[ -d "$src" ]] || return 0
   mkdir -p "$dest"
   shopt -s nullglob
-  for f in "$src"/model*.onnx "$src"/model*.json "$src"/viseme_timeline*.json; do
+  for f in "$src"/model*.onnx "$src"/viseme_timeline*.json "$src"/seek_probe*.json; do
     cp -f "$f" "$dest/"
   done
 }

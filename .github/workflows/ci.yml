@@ -60,6 +60,7 @@ jobs:
       - name: ONNX model contract is self-contained
         run: |
           python scripts/test_model_contract.py
+          python scripts/test_onnx_only_packs.py
           python scripts/test_phone_viseme_baseline.py
           python scripts/test_phone_metrics.py
 

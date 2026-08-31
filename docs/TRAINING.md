@@ -9,9 +9,9 @@ For downloading and running already-built checkpoints, see [MODELS.md](MODELS.md
 2. Montreal Forced Aligner (MFA) → phone TextGrids  
 3. Phonemes → 15 coded visemes (`configs/viseme_map_*.json`)  
 4. Mel tensors (`scripts/build_train_tensors.py`)  
-5. Train MLP / smoke → ONNX + sidecar JSON  
+5. Train MLP / TCN → self-describing ONNX
 
-Godot never trains; it only loads ONNX + mel config.
+Godot never trains; it loads the graph and Mel contract from the same ONNX.
 
 ## Environment
 
@@ -69,7 +69,7 @@ python3 scripts/train_viseme_smoke.py \
   --export-onnx export/ci-smoke/model.onnx
 ```
 
-Writes `model.onnx` + `model.json` (mel params, viseme table).
+Writes `model.onnx` with embedded Mel parameters, vocabulary and provenance.
 
 ## Tier-B train (longer Libri run)
 
@@ -82,7 +82,7 @@ python3 scripts/train_viseme_tier_b.py \
   --hours 1
 ```
 
-Timed checkpoints: `model_10m.onnx`, `model_20m.onnx`, `model_final.onnx` (+ JSON).
+Timed checkpoints: `model_10m.onnx`, `model_20m.onnx`, `model_final.onnx`.
 Convergence log/plot: `convergence.csv` / `convergence.png`.
 
 ## Scoring quality
@@ -99,7 +99,6 @@ Eye-check curves vs MFA boxes in Godot:
 ```bash
 python3 scripts/export_viseme_timeline.py \
   --subset test-clean --stem 8555-284447-0002 \
-  --model-json export/tier-b/model.json \
   --onnx export/tier-b/model_final.onnx \
   --onnx-b export/tier-b/model_10m.onnx \
   --out export/tier-b/viseme_timeline.json
@@ -108,15 +107,14 @@ python3 scripts/export_viseme_timeline.py \
 
 ## Metadata on export
 
-After training (or before shipping a release):
+New trainers embed schema-2 metadata during export. For old ONNX+JSON pairs only:
 
 ```bash
 python3 scripts/embed_model_metadata.py export/tier-b/model_*.onnx
 ```
 
-Refreshes sidecar JSON (`latency`, `quality`) and embeds `vizemes_*` keys in the
-ONNX `metadata_props` so a lone `.onnx` still describes mel shape, lookahead,
-and estimated hit-rate. Sidecar JSON remains what MelFrontend.configure reads.
+The migration tool embeds and verifies `vizemes_*` metadata. Remove the legacy
+sidecar after verification; CI rejects model JSON in shipped packs.
 
 ## Layout reminders
 

@@ -10,7 +10,7 @@ Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 
 | Doc | Contents |
 |-----|----------|
-| [docs/MODELS.md](docs/MODELS.md) | Download / use pre-built ONNX + sidecar JSON, latency, Godot timeline |
+| [docs/MODELS.md](docs/MODELS.md) | Download / use self-describing ONNX, latency, Godot timeline |
 | [docs/TRAINING.md](docs/TRAINING.md) | MFA, tensors, smoke + tier-B train, scoring, embedding metadata |
 
 ## Quick start (alignment package)

@@ -61,16 +61,8 @@ static func _onnx_in_dir(dir_abs: String) -> String:
 	return ""
 
 
-static func _json_in_dir(dir_abs: String) -> String:
-	for name in ["model_final.json", "model.json"]:
-		var p := dir_abs.path_join(name)
-		if FileAccess.file_exists(p):
-			return p
-	return ""
-
-
 static func list_model_packs() -> Array:
-	## [{id, dir_abs, onnx_abs, json_abs, res_dir}] under vizeme-onnxmodels.
+	## [{id, dir_abs, onnx_abs, res_dir}] under vizeme-onnxmodels.
 	var out: Array = []
 	var root_abs := models_abs()
 	var da := DirAccess.open(MODELS_RES)
@@ -88,7 +80,6 @@ static func list_model_packs() -> Array:
 					"id": name,
 					"dir_abs": dir_abs,
 					"onnx_abs": onnx,
-					"json_abs": _json_in_dir(dir_abs),
 					"res_dir": res_dir,
 				})
 		name = da.get_next()
@@ -127,7 +118,6 @@ static func resolve_ci_smoke_paths() -> Dictionary:
 		if str(p.get("id", "")) == "ci-smoke":
 			return {
 				"onnx": str(p["onnx_abs"]),
-				"json": str(p.get("json_abs", "")),
 				"dir": str(p["dir_abs"]),
 				"tcn": false,
 				"id": "ci-smoke",
@@ -150,7 +140,6 @@ static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 				continue
 			return {
 				"onnx": str(p["onnx_abs"]),
-				"json": str(p.get("json_abs", "")),
 				"dir": str(p["dir_abs"]),
 				"tcn": id.contains("tcn"),
 				"id": id,
@@ -159,12 +148,11 @@ static func resolve_model_paths(prefer_tcn: bool = false) -> Dictionary:
 		var id := str(p.get("id", ""))
 		return {
 			"onnx": str(p["onnx_abs"]),
-			"json": str(p.get("json_abs", "")),
 			"dir": str(p["dir_abs"]),
 			"tcn": id.contains("tcn"),
 			"id": id,
 		}
-	return {"onnx": "", "json": "", "dir": "", "tcn": false, "id": ""}
+	return {"onnx": "", "dir": "", "tcn": false, "id": ""}
 
 
 static func resolve_timeline_json() -> String:

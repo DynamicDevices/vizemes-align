@@ -591,7 +591,6 @@ func _infer_from_pcm() -> int:
 		return 1
 	var paths := _default_model_paths()
 	var onnx_path: String = paths["onnx"]
-	var json_path: String = paths["json"]
 	if not FileAccess.file_exists(onnx_path):
 		return 1
 	var mel = ClassDB.instantiate("MelFrontend")
@@ -603,13 +602,10 @@ func _infer_from_pcm() -> int:
 		return 1
 	paths = loaded["paths"]
 	onnx_path = str(paths.get("onnx", ""))
-	json_path = str(paths.get("json", ""))
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		push_error("MelFrontend configure failed for record infer")
 		return 1
 	_names = VisemeUtils.load_id_to_name_from_onnx(loader)
-	if _names.is_empty() and not json_path.is_empty():
-		_names = VisemeUtils.load_id_to_name(json_path)
 	var use_tcn := bool(paths.get("tcn", false))
 	if not use_tcn and loader.has_method("get_metadata_value"):
 		use_tcn = str(loader.get_metadata_value("vizemes_model")).contains("tcn")
@@ -681,7 +677,6 @@ func _load_and_run() -> int:
 		return 1
 	var model_paths: Dictionary = loaded["paths"]
 	var onnx_path := str(model_paths.get("onnx", ""))
-	var json_path := str(model_paths.get("json", ""))
 	var use_tcn := bool(model_paths.get("tcn", false))
 	var onnx_b_path := ""
 	var model_dir := str(model_paths.get("dir", ""))
@@ -704,15 +699,13 @@ func _load_and_run() -> int:
 		_status = "MelFrontend missing"
 		push_error(_status)
 		return 1
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		_status = "MelFrontend configure failed"
 		push_error(_status)
 		return 1
 	var names_onnx: Array = VisemeUtils.load_id_to_name_from_onnx(loader)
 	if not names_onnx.is_empty():
 		_names = names_onnx
-	elif _names.is_empty() and FileAccess.file_exists(json_path):
-		_names = VisemeUtils.load_id_to_name(json_path)
 
 	if wav_path.is_empty():
 		_status = "missing wav under res://addons/vizeme-onnxmodels/fixtures"

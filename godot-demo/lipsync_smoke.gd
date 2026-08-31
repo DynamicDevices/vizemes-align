@@ -9,12 +9,11 @@ const ClipProbeIo := preload("res://clip_probe_io.gd")
 
 func _ready() -> void:
 	var paths := ClipProbeIo.resolve_ci_smoke_paths()
-	var json_path := str(paths.get("json", ""))
 	var onnx_path := str(paths.get("onnx", ""))
 	var wav_path := ClipProbeIo.models_abs().path_join("fixtures/ci-fixture.wav")
 
 	var pipe = VisemePipelineScript.new()
-	if not pipe.setup(json_path, onnx_path):
+	if not pipe.setup(onnx_path):
 		get_tree().quit(1)
 		return
 

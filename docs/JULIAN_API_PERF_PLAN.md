@@ -61,15 +61,15 @@ Move today’s `gdextension/godot/` → `addons/vizemes_mel/`. SConstruct writes
 
 ### 3a configure (msg 826)
 
-- **Done (host C):** dropped hand-rolled `sidecar_json.c`. Python `emit_model_meta.py`
-  (stdlib `json`) writes flat `model.meta`; C loads `key=value` only. Godot happy
-  path stays GDScript `JSON.parse_string` → `MelFrontend.configure(...)`.
+- **Done:** dropped hand-rolled `sidecar_json.c`. Python `emit_model_meta.py`
+  writes flat `model.meta` from canonical ONNX metadata; C loads `key=value`.
+  Godot reads the same metadata through OnnxLoader.
 - Prefer:
   ```gdscript
   mel.configure(context_frames, n_mels, sample_rate, hop, n_fft, win, fmin, fmax, …)
   ```
-  GDScript loads `res://…/model.json` via `FileAccess` + `JSON.parse_string` and passes fields.
-- Keep `configure_from_json` only as a thin deprecated wrapper that uses Godot `FileAccess`/`JSON` *or* remove once demos migrate.
+  GDScript loads `res://…/model.onnx`, then passes its embedded fields.
+- `configure_from_json` and model sidecar fallbacks have been removed.
 
 ### 3b mic ingest (msg 827)
 
@@ -100,7 +100,7 @@ Prepares **AudioEffect** that emits contexts like `AudioEffectCapture` (next cha
 `godot-demo/mic_context_print.tscn` + short `.gd`:
 
 1. enable input
-2. `configure(…)` from parsed model.json (`res://`)
+2. `configure(…)` from loaded ONNX metadata (`res://`)
 3. `begin_stream()`
 4. each frame: `get_input_frames` → `push_pcm_stereo` → while `count_available_contexts()`: print RMS / argmax-ish stats of context
 

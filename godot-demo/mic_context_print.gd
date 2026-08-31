@@ -20,7 +20,6 @@ func _ready() -> void:
 
 	var paths := ClipProbeIo.resolve_model_paths(false)
 	var onnx_path := str(paths.get("onnx", ""))
-	var json_path := str(paths.get("json", ""))
 
 	_mel = ClassDB.instantiate("MelFrontend")
 	if _mel == null:
@@ -30,7 +29,7 @@ func _ready() -> void:
 	if loader == null or onnx_path.is_empty() or not loader.load_model(onnx_path):
 		push_error("OnnxLoader / model missing under res://addons/vizeme-onnxmodels")
 		return
-	if not VisemeUtils.configure_mel_from_onnx(_mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(_mel, loader):
 		push_error("configure failed: %s" % onnx_path)
 		return
 	if _mel.has_method("configure_preprocess"):

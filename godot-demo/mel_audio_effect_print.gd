@@ -14,14 +14,13 @@ func _ready() -> void:
 		return
 	var paths := ClipProbeIo.resolve_model_paths(false)
 	var onnx_path := str(paths.get("onnx", ""))
-	var json_path := str(paths.get("json", ""))
 	_fx = ClassDB.instantiate("MelAudioEffect")
 	var mel = _fx.get_mel_frontend()
 	var loader = ClassDB.instantiate("OnnxLoader")
 	if loader == null or onnx_path.is_empty() or not loader.load_model(onnx_path):
 		push_error("OnnxLoader / model missing under res://addons/vizeme-onnxmodels")
 		return
-	if not VisemeUtils.configure_mel_from_onnx(mel, loader, json_path):
+	if not VisemeUtils.configure_mel_from_onnx(mel, loader):
 		push_error("configure failed")
 		return
 	mel.begin_stream()

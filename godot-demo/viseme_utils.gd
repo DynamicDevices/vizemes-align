@@ -157,44 +157,12 @@ static func series_to_hard_bytes(
 	return out
 
 
-static func load_id_to_name(json_path: String) -> Array:
-	var f := FileAccess.open(json_path, FileAccess.READ)
-	if f == null:
-		return []
-	var data: Variant = JSON.parse_string(f.get_as_text())
-	if typeof(data) != TYPE_DICTIONARY:
-		return []
-	var visemes: Dictionary = data.get("visemes", {})
-	var n: int = int(data.get("n_visemes", visemes.size()))
-	var names: Array = []
-	names.resize(n)
-	for key in visemes.keys():
-		names[int(visemes[key])] = str(key)
-	return names
-
-
-## Parse model.json in GDScript (res:// or absolute) and call MelFrontend.configure(...).
-static func configure_mel_from_json(mel: Object, json_path: String) -> bool:
-	if mel == null:
-		return false
-	var f := FileAccess.open(json_path, FileAccess.READ)
-	if f == null:
-		push_error("configure_mel_from_json: open failed %s" % json_path)
-		return false
-	var data: Variant = JSON.parse_string(f.get_as_text())
-	if typeof(data) != TYPE_DICTIONARY:
-		push_error("configure_mel_from_json: bad JSON %s" % json_path)
-		return false
-	return _configure_mel_from_dict(mel, data)
-
-
-## Prefer ONNX vizemes_* metadata (Julian 889); optional JSON fallback path.
-static func configure_mel_from_onnx(mel: Object, loader: Object, json_fallback: String = "") -> bool:
+## Configure solely from canonical ONNX vizemes_* metadata.
+static func configure_mel_from_onnx(mel: Object, loader: Object) -> bool:
 	if mel == null or loader == null:
 		return false
 	if not loader.has_method("get_metadata_value"):
-		if not json_fallback.is_empty():
-			return configure_mel_from_json(mel, json_fallback)
+		push_error("configure_mel_from_onnx: loader lacks metadata API")
 		return false
 	var blob := str(loader.get_metadata_value("vizemes_meta_json"))
 	if not blob.is_empty():
@@ -228,8 +196,6 @@ static func configure_mel_from_onnx(mel: Object, loader: Object, json_fallback: 
 		if feats <= 0:
 			feats = ctx * n_mels
 		return mel.configure(ctx, n_mels, sr, hop, win, n_fft, fmin, fmax, n_vis, feats)
-	if not json_fallback.is_empty():
-		return configure_mel_from_json(mel, json_fallback)
 	push_error("configure_mel_from_onnx: no vizemes metadata on model")
 	return false
 

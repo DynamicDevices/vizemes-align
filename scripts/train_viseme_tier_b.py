@@ -9,12 +9,17 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import sys
 import time
 from pathlib import Path
 
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from embed_model_metadata import embed_onnx, estimate_latency  # noqa: E402
+from model_contract import load_model_contract  # noqa: E402
 
 
 def soft_boundary_targets(y: np.ndarray, n_visemes: int, blend_frames: int) -> np.ndarray:
@@ -85,11 +90,16 @@ def export_onnx(model, path: Path, meta: dict, in_features: int) -> None:
         dynamic_axes={"mel_context": {0: "batch"}, "viseme_logits": {0: "batch"}},
         opset_version=17,
     )
-    meta_path = path.with_suffix(".json")
     meta = dict(meta)
     meta["onnx"] = path.name
-    meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-    print(f"ONNX_OK {path} meta={meta_path}", flush=True)
+    meta.setdefault("doc", meta.get("note", "Causal Mel-to-viseme MLP."))
+    meta.setdefault("normalization", "per_utterance_per_mel_mean_std")
+    meta["latency"] = estimate_latency(
+        meta["audio"], int(meta["context_frames"]), float(meta.get("lookahead_ms", 0.0))
+    )
+    embed_onnx(path, meta)
+    contract = load_model_contract(path, require_schema=2)
+    print(f"ONNX_OK {path} schema={contract['_schema']} metadata=embedded", flush=True)
 
 
 def plot_convergence(csv_path: Path, out_png: Path) -> None:
