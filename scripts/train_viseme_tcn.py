@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
+import random
 import time
 from pathlib import Path
 
@@ -39,6 +41,16 @@ def load_split(tdir: Path, val_frac: float, limit: int = 0):
     train_u = [u for u in utterances if u["id"] not in val_ids]
     val_u = [u for u in utterances if u["id"] in val_ids]
     return index, train_u, val_u
+
+
+def split_digest(utterances: list[dict]) -> str:
+    payload = "\n".join(sorted(str(u["id"]) for u in utterances)).encode()
+    return hashlib.sha256(payload).hexdigest()
+
+
+def receptive_history_hops(layers: int, kernel: int) -> int:
+    # Two causal convolutions per block, with dilations 1, 2, 4, ...
+    return 1 + 2 * (kernel - 1) * ((1 << layers) - 1)
 
 
 def utterance_xy(
@@ -120,6 +132,10 @@ def export_onnx(model, path: Path, meta: dict, n_mels: int) -> None:
         output_names=["viseme_logits"],
         dynamic_axes={"mel_btf": {0: "batch", 1: "time"}, "viseme_logits": {0: "batch", 1: "time"}},
         opset_version=17,
+        # Keep the pinned Nix training shell self-contained. PyTorch 2.9's
+        # default dynamo exporter adds an onnxscript dependency unavailable in
+        # nixos-25.11, while the legacy exporter supports this graph fully.
+        dynamo=False,
     )
     meta = dict(meta)
     meta["onnx"] = path.name
@@ -169,6 +185,14 @@ def main() -> int:
     ap.add_argument("--lr", type=float, default=3e-4)
     ap.add_argument("--batch-utterances", type=int, default=8)
     ap.add_argument("--wall-seconds", type=float, default=600.0)
+    ap.add_argument(
+        "--steps",
+        type=int,
+        default=0,
+        help="Exact optimizer-step budget; when non-zero, overrides --wall-seconds.",
+    )
+    ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     ap.add_argument("--lookahead-ms", type=float, default=50.0)
     ap.add_argument("--blend-ms", type=float, default=60.0)
     ap.add_argument("--hard-boundaries", action="store_true")
@@ -182,6 +206,11 @@ def main() -> int:
     import torch
     import torch.nn.functional as F
 
+    random.seed(args.seed)
+    np.random.seed(args.seed)
+    torch.manual_seed(args.seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(args.seed)
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
 
     tdir = ROOT / "data" / "tensors" / args.subset
@@ -201,15 +230,22 @@ def main() -> int:
     lag = max(0, int(round(args.lookahead_ms / hop_ms)))
     blend = max(0, int(round(args.blend_ms / hop_ms)))
 
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if args.device == "cuda" and not torch.cuda.is_available():
+        raise RuntimeError("--device cuda requested but CUDA is unavailable")
+    selected_device = "cuda" if args.device == "auto" and torch.cuda.is_available() else args.device
+    if selected_device == "auto":
+        selected_device = "cpu"
+    device = torch.device(selected_device)
     model = make_tcn(n_mels, n_visemes, args.layers, args.channels, args.kernel, args.dropout).to(
         device
     )
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    history_hops = receptive_history_hops(args.layers, args.kernel)
     print(
         f"TCN layers={args.layers} channels={args.channels} params={n_params} device={device} "
-        f"train_u={len(train_u)} val_u={len(val_u)}",
+        f"history={history_hops}hops/{history_hops * hop_ms:.0f}ms train_u={len(train_u)} "
+        f"val_u={len(val_u)} seed={args.seed}",
         flush=True,
     )
 
@@ -247,16 +283,23 @@ def main() -> int:
         "train_utterances": len(train_u),
         "val_utterances": len(val_u),
         "params": n_params,
+        "seed": args.seed,
+        "device": str(device),
+        "step_budget": args.steps,
+        "receptive_history_hops": history_hops,
+        "receptive_history_ms": history_hops * hop_ms,
+        "train_split_sha256": split_digest(train_u),
+        "val_split_sha256": split_digest(val_u),
     }
     if args.overfit_stem:
         meta_base["training_mode"] = "single_utterance_overfit"
         meta_base["overfit_stem"] = args.overfit_stem
 
-    def eval_val() -> float:
+    def eval_split(utterances: list[dict]) -> tuple[float, int]:
         model.eval()
         hits = tot = 0
         with torch.no_grad():
-            for u in val_u:
+            for u in utterances:
                 X, targets = utterance_xy(tdir, u, n_visemes, lag, blend, soft)
                 xb = torch.from_numpy(X[None, ...]).to(device)
                 logits = model(xb)[0].cpu().numpy()
@@ -265,15 +308,15 @@ def main() -> int:
                 hits += int((pred == hard).sum())
                 tot += int(hard.size)
         model.train()
-        return hits / max(1, tot)
+        return hits / max(1, tot), tot
 
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(args.seed)
     t0 = time.time()
     step = 0
     last_log = t0
     best_val = -1.0
     model.train()
-    while time.time() - t0 < args.wall_seconds:
+    while (step < args.steps) if args.steps > 0 else (time.time() - t0 < args.wall_seconds):
         batch_idx = rng.choice(len(train_u), size=min(args.batch_utterances, len(train_u)), replace=False)
         loss_acc = 0.0
         n_b = 0
@@ -292,7 +335,7 @@ def main() -> int:
         step += 1
         now = time.time()
         if now - last_log >= args.log_every_s or step == 1:
-            vacc = eval_val()
+            vacc, _ = eval_split(val_u)
             best_val = max(best_val, vacc)
             row = {
                 "elapsed_s": round(now - t0, 3),
@@ -309,7 +352,8 @@ def main() -> int:
             last_log = now
 
     csv_f.close()
-    fit_acc = eval_val()
+    fit_acc, fit_frames = eval_split(train_u)
+    held_out_acc, held_out_frames = eval_split(val_u)
     meta = dict(meta_base)
     meta.update(
         {
@@ -319,9 +363,15 @@ def main() -> int:
             "best_val_acc": best_val,
             "quality": {
                 "metric": "argmax_frame_accuracy",
-                "all_acc": fit_acc,
-                "n_frames": sum(int(utterance["frames"]) for utterance in val_u),
+                "all_acc": held_out_acc,
+                "n_frames": held_out_frames,
                 "scope": "single-clip fit" if args.overfit_stem else "held-out validation",
+            },
+            "fit_quality": {
+                "metric": "argmax_frame_accuracy",
+                "all_acc": fit_acc,
+                "n_frames": fit_frames,
+                "scope": "training split",
             },
             "latency": estimate_latency(index["audio"], 1, args.lookahead_ms),
         }
@@ -335,7 +385,11 @@ def main() -> int:
         out_dir / "convergence.png",
         "Tier-B labels + TCN (OpenLipSync-style) — 10 min",
     )
-    print(f"DONE best_val_acc={best_val:.4f} fit_acc={fit_acc:.4f} out={out_dir}", flush=True)
+    print(
+        f"DONE best_val_acc={best_val:.4f} fit_acc={fit_acc:.4f} "
+        f"held_out_acc={held_out_acc:.4f} out={out_dir}",
+        flush=True,
+    )
     return 0
 
 

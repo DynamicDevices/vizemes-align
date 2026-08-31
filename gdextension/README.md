@@ -47,7 +47,9 @@ Open `../godot-demo/` → run `mel_smoke.tscn` → expect `GODOT_MEL_ONNX_SMOKE_
 (wav → mel context → OnnxLoader). Requires both addons built (OnnxLoader + MelFrontend).
 
 **Streaming vs batch:** `push_pcm_contexts` accumulates PCM and runs the same batch mel +
-per-utterance normalize as `build_utterance_contexts` (chunked vs one-shot only).
+per-utterance normalize as `build_utterance_contexts`. The live queue is causal
+and uses running normalization, so its edge-frame count and values intentionally
+differ from the offline/training transform.
 
 ## Target Godot shape ([goatchurchprime/lipsync](https://github.com/goatchurchprime/lipsync))
 

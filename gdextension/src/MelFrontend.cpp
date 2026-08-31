@@ -455,11 +455,27 @@ float MelFrontend::last_context_time_offset() const
 
 Array MelFrontend::build_utterance_contexts(const PackedFloat32Array &pcm)
 {
-	begin_stream();
-	push_pcm(pcm);
 	Array out;
-	while (count_available_contexts() > 0) {
-		out.push_back(get_next_context());
+	const Dictionary utterance = build_utterance_mels(pcm);
+	const int frame_count = (int)utterance.get("n_frames", 0);
+	const int frame_features = (int)utterance.get("n_mels", 0);
+	const PackedFloat32Array frames = utterance.get("frames", PackedFloat32Array());
+	if (frame_count < context_frames || frame_features != n_mels ||
+			frames.size() != frame_count * frame_features) {
+		return out;
+	}
+
+	for (int end_frame = context_frames - 1; end_frame < frame_count; end_frame++) {
+		PackedFloat32Array flat;
+		flat.resize(input_features);
+		const int first_frame = end_frame - context_frames + 1;
+		for (int frame = 0; frame < context_frames; frame++) {
+			for (int mel_bin = 0; mel_bin < n_mels; mel_bin++) {
+				flat[frame * n_mels + mel_bin] =
+						frames[(first_frame + frame) * n_mels + mel_bin];
+			}
+		}
+		out.push_back(flat);
 	}
 	return out;
 }

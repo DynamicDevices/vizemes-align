@@ -57,8 +57,10 @@
           numpy
           textgridTrain
           soundfile
+          matplotlib
           torch
           torchaudio
+          onnx
           onnxruntime  # Hydra-cached on 25.11; scripts/sanity_check_onnx.py
           # triton comes in as a torch dep when present on the channel
         ]);
@@ -132,7 +134,7 @@
             export C_INCLUDE_PATH="${ortDev}/include''${C_INCLUDE_PATH:+:}$C_INCLUDE_PATH"
             export LIBRARY_PATH="${ortPkg}/lib''${LIBRARY_PATH:+:}$LIBRARY_PATH"
             echo "vizemes-align nix develop .#train"
-            echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/torch/torchaudio/onnxruntime"
+            echo "  Store (nixos-25.11 Hydra): numpy/textgrid/soundfile/matplotlib/torch/torchaudio/onnx/onnxruntime"
             echo "  ORT_ROOT=$ORT_ROOT  ORT_LIB=$ORT_LIB"
             echo "  Host C runtime: cd gdextension && make smoke-csv   # needs ORT_ROOT"
             echo "  Godot loader: clone godot-onnx-loader, scons, open ../godot-demo/"
@@ -142,7 +144,7 @@
             echo "  Cycle:"
             echo "    python3 scripts/build_train_tensors.py --subset test-clean"
             echo "    python3 scripts/train_viseme_smoke.py --subset test-clean --context 20"
-            if ! python3 -c 'import torch, torchaudio, soundfile, textgrid, numpy, onnxruntime' 2>/dev/null; then
+            if ! python3 -c 'import torch, torchaudio, soundfile, matplotlib, textgrid, numpy, onnx, onnxruntime' 2>/dev/null; then
               echo "  ERROR: train pythonEnv missing imports" >&2
               exit 1
             fi

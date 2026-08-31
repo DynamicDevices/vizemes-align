@@ -712,6 +712,7 @@ func _load_and_run() -> int:
 		_status = "MelFrontend configure failed"
 		push_error(_status)
 		return 1
+	VisemeUtils.print_onnx_input_summary(loader)
 	var names_onnx: Array = VisemeUtils.load_id_to_name_from_onnx(loader)
 	if not names_onnx.is_empty():
 		_names = names_onnx
@@ -746,6 +747,7 @@ func _load_and_run() -> int:
 		var path_b := str(explicit_b.get("onnx", ""))
 		if loader_b != null and mel_b != null and loader_b.load_model(path_b):
 			if VisemeUtils.configure_mel_from_onnx(mel_b, loader_b):
+				VisemeUtils.print_onnx_input_summary(loader_b)
 				var model_b := str(loader_b.get_metadata_value("vizemes_model"))
 				if model_b.contains("tcn"):
 					_series_b = _predict_series_tcn(loader_b, mel_b, _pcm)

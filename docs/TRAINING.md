@@ -150,6 +150,23 @@ This writes `export/phone-duration-report/README.md`, `phone_durations.csv`,
 `summary.json`, and `phone_duration_distributions.png`. The report is evidence
 for transition-policy experiments; it does not measure visual mouth movement.
 
+## Reproducible TCN depth comparison
+
+Compare the short three-block causal TCN (29 hops / 290 ms) with the current
+five-block model (125 hops / 1.25 s) using identical splits, initialization
+seed, optimizer settings, and optimizer-step budget:
+
+```bash
+nix develop .#train
+DEVICE=cuda STEPS=2000 SEED=20260831 \
+  bash scripts/run_tcn_depth_comparison.sh
+```
+
+Each invocation creates a new `export/tcn-depth-comparison-seed-<seed>/`
+directory. `comparison.json` records model size, receptive history, fit and
+held-out frame accuracy, and hashes of both utterance splits. Set `OUT_ROOT` to
+a fresh directory when repeating the same seed; do not overwrite prior runs.
+
 ## Metadata on export
 
 New trainers embed schema-2 metadata during export. For old ONNX+JSON pairs only:

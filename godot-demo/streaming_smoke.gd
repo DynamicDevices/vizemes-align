@@ -50,8 +50,16 @@ func _ready() -> void:
 		return
 
 	var batch_ctx: Array = mel.build_utterance_contexts(pcm)
-	if stream_ctx.size() != batch_ctx.size():
-		push_error("streaming/batch context count mismatch %d vs %d" % [stream_ctx.size(), batch_ctx.size()])
+	# Batch uses the centred, full-utterance-normalised training transform while
+	# streaming uses causal framing and running statistics. Their edge frame
+	# counts may differ by at most one analysis window.
+	var window_samples := int(str(loader.get_metadata_value("vizemes_window_length_samples")))
+	var hop_samples := int(str(loader.get_metadata_value("vizemes_hop_length_samples")))
+	var edge_frames: int = ceili(float(window_samples) / float(hop_samples))
+	if absi(stream_ctx.size() - batch_ctx.size()) > edge_frames:
+		push_error("streaming/batch context count drift %d vs %d (limit %d)" % [
+			stream_ctx.size(), batch_ctx.size(), edge_frames
+		])
 		get_tree().quit(1)
 		return
 
