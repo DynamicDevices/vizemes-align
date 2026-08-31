@@ -60,15 +60,20 @@ def utterance_xy(
     lag: int,
     blend: int,
     soft: bool,
-) -> tuple[np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     z = np.load(tdir / u["path"])
     X = z["X"].astype(np.float32)  # (T, n_mels)
     y = apply_lookahead(z["y"].astype(np.int64), lag)
+    valid = z["valid"].astype(bool) if "valid" in z else np.ones(y.shape, dtype=bool)
+    valid = apply_lookahead(valid, lag).astype(bool)
+    if blend > 0 and not valid.all():
+        invalid = np.convolve((~valid).astype(np.int8), np.ones(2 * blend + 1, dtype=np.int8), mode="same")
+        valid = invalid == 0
     if soft:
         targets = soft_boundary_targets(y, n_visemes, blend)
     else:
         targets = np.eye(n_visemes, dtype=np.float32)[y]
-    return X, targets
+    return X, targets, valid
 
 
 def make_tcn(n_mels: int, n_visemes: int, layers: int, channels: int, kernel: int, dropout: float):
@@ -300,13 +305,13 @@ def main() -> int:
         hits = tot = 0
         with torch.no_grad():
             for u in utterances:
-                X, targets = utterance_xy(tdir, u, n_visemes, lag, blend, soft)
+                X, targets, valid = utterance_xy(tdir, u, n_visemes, lag, blend, soft)
                 xb = torch.from_numpy(X[None, ...]).to(device)
                 logits = model(xb)[0].cpu().numpy()
                 pred = logits.argmax(-1)
                 hard = targets.argmax(-1)
-                hits += int((pred == hard).sum())
-                tot += int(hard.size)
+                hits += int(((pred == hard) & valid).sum())
+                tot += int(valid.sum())
         model.train()
         return hits / max(1, tot), tot
 
@@ -322,11 +327,13 @@ def main() -> int:
         n_b = 0
         opt.zero_grad(set_to_none=True)
         for bi in batch_idx:
-            X, targets = utterance_xy(tdir, train_u[int(bi)], n_visemes, lag, blend, soft)
+            X, targets, valid = utterance_xy(tdir, train_u[int(bi)], n_visemes, lag, blend, soft)
             xb = torch.from_numpy(X[None, ...]).to(device)
             yb = torch.from_numpy(targets[None, ...]).to(device)
             logits = model(xb)
-            loss = F.binary_cross_entropy_with_logits(logits, yb)
+            frame_loss = F.binary_cross_entropy_with_logits(logits, yb, reduction="none").mean(dim=-1)
+            mask = torch.from_numpy(valid[None, ...]).to(device=device, dtype=frame_loss.dtype)
+            loss = (frame_loss * mask).sum() / mask.sum().clamp_min(1.0)
             loss.backward()
             loss_acc += float(loss.item())
             n_b += 1

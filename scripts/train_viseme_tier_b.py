@@ -63,16 +63,25 @@ def iter_utterance_windows(
         z = np.load(tdir / u["path"])
         X = z["X"].astype(np.float32)
         y = z["y"].astype(np.int64)
+        valid = z["valid"].astype(bool) if "valid" in z else np.ones(y.shape, dtype=bool)
         y = apply_lookahead(y, lag_frames)
+        valid = apply_lookahead(valid, lag_frames).astype(bool)
+        if blend_frames > 0 and not valid.all():
+            invalid = np.convolve(
+                (~valid).astype(np.int8), np.ones(2 * blend_frames + 1, dtype=np.int8), mode="same"
+            )
+            valid = invalid == 0
         if X.shape[0] < ctx:
             pad = np.repeat(X[:1], ctx - X.shape[0], axis=0)
             X = np.concatenate([pad, X], axis=0)
             y = np.concatenate([np.repeat(y[:1], ctx - y.shape[0]), y], axis=0)
+            valid = np.concatenate([np.repeat(valid[:1], ctx - valid.shape[0]), valid], axis=0)
         targets = soft_boundary_targets(y, n_visemes, blend_frames) if soft else np.eye(
             n_visemes, dtype=np.float32
         )[y]
         for i in range(ctx - 1, X.shape[0]):
-            yield X[i - ctx + 1 : i + 1].reshape(-1), targets[i]
+            if valid[i]:
+                yield X[i - ctx + 1 : i + 1].reshape(-1), targets[i]
 
 
 def export_onnx(model, path: Path, meta: dict, in_features: int) -> None:

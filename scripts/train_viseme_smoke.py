@@ -19,16 +19,24 @@ from embed_model_metadata import embed_onnx, estimate_latency  # noqa: E402
 from model_contract import load_model_contract  # noqa: E402
 
 
-def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndarray]:
+def windows(
+    X: np.ndarray, y: np.ndarray, ctx: int, valid: np.ndarray | None = None
+) -> tuple[np.ndarray, np.ndarray]:
     """Causal past context: frame i uses X[i-ctx+1:i+1], label y[i]."""
+    if valid is None:
+        valid = np.ones(y.shape, dtype=bool)
+    else:
+        valid = valid.astype(bool)
     if X.shape[0] < ctx:
         pad = np.repeat(X[:1], ctx - X.shape[0], axis=0)
         X = np.concatenate([pad, X], axis=0)
         y = np.concatenate([np.repeat(y[:1], ctx - y.shape[0]), y], axis=0)
+        valid = np.concatenate([np.repeat(valid[:1], ctx - valid.shape[0]), valid], axis=0)
     xs, ys = [], []
     for i in range(ctx - 1, X.shape[0]):
-        xs.append(X[i - ctx + 1 : i + 1].reshape(-1))
-        ys.append(y[i])
+        if valid[i]:
+            xs.append(X[i - ctx + 1 : i + 1].reshape(-1))
+            ys.append(y[i])
     return np.stack(xs).astype(np.float32), np.asarray(ys, dtype=np.int64)
 
 
@@ -79,7 +87,8 @@ def main() -> int:
     Xs, ys = [], []
     for u in utterances:
         z = np.load(tdir / u["path"])
-        xw, yw = windows(z["X"], z["y"], args.context)
+        valid = z["valid"] if "valid" in z else None
+        xw, yw = windows(z["X"], z["y"], args.context, valid)
         Xs.append(xw)
         ys.append(yw)
     X = np.concatenate(Xs, axis=0)

@@ -61,6 +61,16 @@ def frame_viseme_ids(
     return y
 
 
+def frame_validity(excluded: list[dict], n_frames: int, hop_s: float) -> np.ndarray:
+    """One for trusted target frames; zero for intervals excluded by alignment QA."""
+    valid = np.ones(n_frames, dtype=np.uint8)
+    for i in range(n_frames):
+        t = (i + 0.5) * hop_s
+        if any(float(item["start"]) <= t < float(item["end"]) for item in excluded):
+            valid[i] = 0
+    return valid
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--subset", default="ci-fixture")
@@ -70,11 +80,14 @@ def main() -> int:
         default=ROOT / "configs" / "viseme_map_en_us_arpa.json",
     )
     ap.add_argument("--limit", type=int, default=0)
+    ap.add_argument("--aligned-dir", type=Path)
+    ap.add_argument("--out-dir", type=Path)
+    ap.add_argument("--require-quality", action="store_true")
     args = ap.parse_args()
 
     prepared = ROOT / "data" / "prepared" / args.subset
-    aligned = ROOT / "data" / "aligned" / args.subset
-    out_dir = ROOT / "data" / "tensors" / args.subset
+    aligned = args.aligned_dir or ROOT / "data" / "aligned" / args.subset
+    out_dir = args.out_dir or ROOT / "data" / "tensors" / args.subset
     if not aligned.exists():
         print(f"Missing alignments: {aligned}", file=sys.stderr)
         return 1
@@ -93,6 +106,7 @@ def main() -> int:
         "viseme_map": args.viseme_map.name,
         "visemes": name_to_idx,
         "fps": 1.0 / hop_s,
+        "quality_mask": {"array": "valid", "semantics": "1=use target, 0=exclude from loss and metrics"},
         "utterances": [],
     }
 
@@ -113,15 +127,23 @@ def main() -> int:
         sd = X.std(axis=0, keepdims=True) + 1e-5
         Xn = (X - mu) / sd
         y = frame_viseme_ids(phones, Xn.shape[0], hop_s, phone_to_idx)
+        quality_path = tg_path.with_suffix(".quality.json")
+        if args.require_quality and not quality_path.exists():
+            raise FileNotFoundError(f"missing required alignment quality sidecar: {quality_path}")
+        quality = json.loads(quality_path.read_text()) if quality_path.exists() else {"excluded_intervals": []}
+        valid = frame_validity(quality.get("excluded_intervals", []), Xn.shape[0], hop_s)
 
         npz = out_dir / f"{stem}.npz"
-        np.savez_compressed(npz, X=Xn, y=y, mu=mu.astype(np.float32), sd=sd.astype(np.float32))
+        np.savez_compressed(npz, X=Xn, y=y, valid=valid, mu=mu.astype(np.float32), sd=sd.astype(np.float32))
         index["utterances"].append(
             {
                 "id": stem,
                 "path": npz.name,
                 "frames": int(Xn.shape[0]),
                 "n_mels": int(Xn.shape[1]),
+                "valid_frames": int(valid.sum()),
+                "excluded_frames": int(valid.size - valid.sum()),
+                "alignment_quality": str(quality_path.relative_to(aligned)) if quality_path.exists() else None,
             }
         )
         print(f"{stem}: X{Xn.shape} y{y.shape} → {npz}")

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "subset": "test-clean-reduced-v1",
+  "utterances": {
+    "1089-134686-0000": [
+      {
+        "start": 3.18,
+        "end": 3.37,
+        "phones": ["D"],
+        "reason": "Manual audit: final /d/ in 'and' is not audibly realised in the source recording; exclude the old forced /d/ region if a reduced pronunciation is not selected."
+      }
+    ]
+  }
+}
