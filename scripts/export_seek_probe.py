@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from export_godot_package import load_viseme_map, phones_from_textgrid  # noqa: E402
+from model_contract import load_model_contract  # noqa: E402
 from train_viseme_smoke import windows  # noqa: E402
 
 
@@ -53,9 +54,10 @@ def main() -> int:
         default=ROOT / "export" / "ci-smoke" / "seek_probe.json",
     )
     ap.add_argument(
-        "--model-json",
+        "--onnx",
         type=Path,
-        default=ROOT / "export" / "ci-smoke" / "model.json",
+        default=ROOT / "export" / "ci-smoke" / "model.onnx",
+        help="Canonical model contract and inference graph",
     )
     ap.add_argument(
         "--viseme-map",
@@ -93,7 +95,7 @@ def main() -> int:
         return 1
 
     npz_path = tdir / f"{stem}.npz"
-    meta = json.loads(args.model_json.read_text(encoding="utf-8"))
+    meta = load_model_contract(args.onnx, require_schema=2)
     ctx = int(meta["context_frames"])
     hop = float(meta["audio"]["hop_length_samples"]) / float(meta["audio"]["sample_rate"])
     id_to_name = {int(v): str(k) for k, v in meta["visemes"].items()}
@@ -159,8 +161,8 @@ def main() -> int:
         "subset": args.subset,
         "stem": stem,
         "wav": wav_rel,
-        "model_json": "export/ci-smoke/model.json",
-        "onnx": "export/ci-smoke/model.onnx",
+        "model_onnx": str(args.onnx.resolve().relative_to(ROOT)),
+        "onnx": str(args.onnx.resolve().relative_to(ROOT)),
         "context_frames": ctx,
         "hop_s": hop,
         "visemes": name_to_idx,

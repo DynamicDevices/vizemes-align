@@ -225,12 +225,9 @@ static func export_viseme_timeline(stem: String, subset: String = DEFAULT_SUBSET
 		"--out", out,
 	])
 	var onnx := _onnx_in_dir(abs_dir)
-	var meta := _json_in_dir(abs_dir)
 	var onnx_b := abs_dir.path_join("model_10m.onnx")
 	if not onnx.is_empty():
 		args.append_array(PackedStringArray(["--onnx", onnx]))
-	if not meta.is_empty():
-		args.append_array(PackedStringArray(["--model-json", meta]))
 	if FileAccess.file_exists(onnx_b):
 		args.append_array(PackedStringArray([
 			"--onnx-b", onnx_b,
