@@ -17,6 +17,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from embed_model_metadata import embed_onnx  # noqa: E402
 from model_contract import load_model_contract  # noqa: E402
 from phone_metrics import boundary_metrics, collapse_phone_frames, edit_distance  # noqa: E402
+from phone_viseme_mapper import PhoneVisemeMap  # noqa: E402
 
 
 def make_model(n_mels: int, n_phones: int, channels: int, layers: int, kernel: int):
@@ -60,17 +61,28 @@ def load_utterance(index_dir: Path, row: dict) -> tuple[np.ndarray, np.ndarray]:
     return features[:length], targets[:length]
 
 
-def evaluate(model, rows: list[dict], index_dir: Path, labels: list[str], device: str) -> dict:
+def evaluate(
+    model,
+    rows: list[dict],
+    index_dir: Path,
+    labels: list[str],
+    device: str,
+    mapper: PhoneVisemeMap,
+) -> dict:
     import torch
 
     model.eval()
     correct = frames = edits = reference_phones = 0
     boundary_errors: list[float] = []
+    viseme_correct = viseme_frames = viseme_reference_transitions = 0
+    viseme_hypothesis_transitions = 0
+    viseme_boundary_errors: list[float] = []
     with torch.no_grad():
         for row in rows:
             features, reference = load_utterance(index_dir, row)
             logits = model(torch.from_numpy(features[None]).to(device))
             hypothesis = logits.argmax(dim=-1).cpu().numpy()[0]
+            posteriors = torch.softmax(logits, dim=-1).cpu().numpy()[0]
             correct += int((hypothesis == reference).sum())
             frames += int(reference.size)
             ref_seq = collapse_phone_frames(reference, labels)
@@ -80,12 +92,38 @@ def evaluate(model, rows: list[dict], index_dir: Path, labels: list[str], device
             boundaries = boundary_metrics(reference, hypothesis)
             if np.isfinite(boundaries.mean_absolute_ms):
                 boundary_errors.append(boundaries.mean_absolute_ms)
+            reference_visemes = mapper.matrix[reference].argmax(axis=1)
+            mapped_weights = mapper.map_posteriors(posteriors)
+            hypothesis_visemes = mapped_weights.argmax(axis=1)
+            viseme_correct += int((hypothesis_visemes == reference_visemes).sum())
+            viseme_frames += int(reference_visemes.size)
+            ref_changes = int(np.count_nonzero(reference_visemes[1:] != reference_visemes[:-1]))
+            hyp_changes = int(np.count_nonzero(hypothesis_visemes[1:] != hypothesis_visemes[:-1]))
+            viseme_reference_transitions += ref_changes
+            viseme_hypothesis_transitions += hyp_changes
+            viseme_boundaries = boundary_metrics(reference_visemes, hypothesis_visemes)
+            if np.isfinite(viseme_boundaries.mean_absolute_ms):
+                viseme_boundary_errors.append(viseme_boundaries.mean_absolute_ms)
+    duration_s = viseme_frames * 0.01
     return {
         "frame_accuracy": correct / max(1, frames),
         "phone_error_rate": edits / max(1, reference_phones),
         "boundary_mean_absolute_ms": float(np.mean(boundary_errors)) if boundary_errors else None,
         "frames": frames,
         "utterances": len(rows),
+        "deterministic_viseme": {
+            "frame_accuracy": viseme_correct / max(1, viseme_frames),
+            "boundary_mean_absolute_ms": (
+                float(np.mean(viseme_boundary_errors)) if viseme_boundary_errors else None
+            ),
+            "reference_transitions": viseme_reference_transitions,
+            "hypothesis_transitions": viseme_hypothesis_transitions,
+            "transition_ratio": viseme_hypothesis_transitions / max(1, viseme_reference_transitions),
+            "excess_transition_jitter_hz": max(
+                0.0, (viseme_hypothesis_transitions - viseme_reference_transitions) / max(0.01, duration_s)
+            ),
+            "smoothing_ms": 60.0,
+        },
     }
 
 
@@ -123,6 +161,7 @@ def main() -> int:
     split = max(1, int(round(len(rows) * 0.1)))
     train_rows, val_rows = rows[:-split], rows[-split:]
     labels = [name for name, _ in sorted(index["phones"].items(), key=lambda item: item[1])]
+    mapper = PhoneVisemeMap.from_config(ROOT / "configs" / "viseme_map_en_us_arpa.json", labels)
     n_mels = int(index["audio"]["n_mels"])
     model = make_model(n_mels, len(labels), args.channels, args.layers, args.kernel).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
@@ -143,7 +182,7 @@ def main() -> int:
         if steps % 25 == 0:
             print(f"step={steps} elapsed={time.monotonic()-started:.1f}s loss={float(loss):.4f}")
 
-    metrics = evaluate(model, val_rows, index_dir, labels, device)
+    metrics = evaluate(model, val_rows, index_dir, labels, device, mapper)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     model_cpu = model.to("cpu").eval()
     dummy = torch.zeros(1, 32, n_mels, dtype=torch.float32)
