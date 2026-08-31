@@ -61,6 +61,7 @@ jobs:
         run: |
           python scripts/test_model_contract.py
           python scripts/test_phone_viseme_baseline.py
+          python scripts/test_phone_metrics.py
 
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
