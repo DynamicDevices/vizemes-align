@@ -30,7 +30,11 @@ nix develop .#train --command bash -c '
 	cd gdextension
 	git submodule update --init --recursive 2>/dev/null || true
 	scons platform=linux target=template_debug
-	test -f godot/bin/libvizemes_mel.linux.template_debug.x86_64.so
+	mel_so=../addons/vizemes_mel/bin/libvizemes_mel.linux.template_debug.x86_64.so
+	if [[ ! -f "$mel_so" ]]; then
+		echo "julian_vizemes_smoke: MelFrontend build missing $mel_so" >&2
+		exit 1
+	fi
 '
 
 echo "=== OnnxLoader Godot 4.6 + nixpkgs ORT (csv proof) ==="
