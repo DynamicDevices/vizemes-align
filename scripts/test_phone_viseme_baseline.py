@@ -25,6 +25,12 @@ ROOT = Path(__file__).resolve().parents[1]
 def main() -> int:
     phones = ["sil", "P", "B", "F", "AA1", "IY0"]
     mapper = PhoneVisemeMap.from_config(ROOT / "configs/viseme_map_en_us_arpa.json", phones)
+    contract = mapper.contract()
+    assert contract["type"] == "posterior_sum_causal_exponential_top_k"
+    assert len(contract["phone_to_viseme_ids"]) == len(phones)
+    assert contract["phone_to_viseme_ids"][phones.index("P")] == contract["visemes"]["PP"]
+    assert contract["phone_to_viseme_ids"][phones.index("IY0")] == contract["visemes"]["ih"]
+    assert len(contract["config_sha256"]) == 64
     posterior = np.zeros((12, len(phones)), dtype=np.float32)
     posterior[:4, 1] = 1.0  # P → PP
     posterior[4:8, 2] = 1.0  # B → same PP (must not create a visual transition)

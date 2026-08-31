@@ -208,6 +208,7 @@ def main() -> int:
         "params": sum(parameter.numel() for parameter in model.parameters()),
         "phones": phone_vocab,
         "n_phones": len(labels),
+        "phone_to_viseme": mapper.contract(),
         "n_mels": n_mels,
         "context_frames": 1,
         "input_features": n_mels,

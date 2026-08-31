@@ -2,6 +2,7 @@
 """Explainable stage-B baseline: phone posteriors → smoothed viseme weights."""
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from dataclasses import dataclass
@@ -15,10 +16,13 @@ class PhoneVisemeMap:
     phone_labels: tuple[str, ...]
     viseme_labels: tuple[str, ...]
     matrix: np.ndarray  # [phones, visemes], one-hot rows
+    config_version: str
+    config_sha256: str
 
     @classmethod
     def from_config(cls, path: Path, phone_labels: list[str]) -> "PhoneVisemeMap":
-        data = json.loads(path.read_text(encoding="utf-8"))
+        raw = path.read_bytes()
+        data = json.loads(raw.decode("utf-8"))
         visemes = {str(k): int(v) for k, v in data["viseme_set"]["visemes"].items()}
         by_id = tuple(name for name, _ in sorted(visemes.items(), key=lambda item: item[1]))
         phone_to_name = {str(k).upper(): str(v) for k, v in data["phoneme_to_viseme"].items()}
@@ -28,7 +32,39 @@ class PhoneVisemeMap:
             base = phone.rstrip("012")
             name = phone_to_name.get(phone, phone_to_name.get(base, "silence"))
             matrix[row, visemes.get(name, 0)] = 1.0
-        return cls(tuple(phone_labels), by_id, matrix)
+        return cls(
+            tuple(phone_labels),
+            by_id,
+            matrix,
+            str(data.get("version", "")),
+            hashlib.sha256(raw).hexdigest(),
+        )
+
+    def contract(
+        self,
+        *,
+        hop_seconds: float = 0.01,
+        smoothing_seconds: float = 0.06,
+        top_k: int = 2,
+    ) -> dict:
+        """Return the complete deterministic stage-B runtime contract.
+
+        Consumers reproduce the mapper from this object and the enclosing
+        ONNX phone vocabulary. ``phone_to_viseme_ids`` is indexed by phone id,
+        so runtime code never needs the training JSON or ARPA label rules.
+        """
+        if hop_seconds <= 0 or smoothing_seconds < 0 or top_k < 0:
+            raise ValueError("invalid deterministic mapper contract")
+        return {
+            "type": "posterior_sum_causal_exponential_top_k",
+            "config_version": self.config_version,
+            "config_sha256": self.config_sha256,
+            "visemes": {label: index for index, label in enumerate(self.viseme_labels)},
+            "phone_to_viseme_ids": self.matrix.argmax(axis=1).astype(int).tolist(),
+            "hop_seconds": hop_seconds,
+            "smoothing_seconds": smoothing_seconds,
+            "top_k": top_k,
+        }
 
     def map_posteriors(
         self,
@@ -68,4 +104,3 @@ class PhoneVisemeMap:
                 sparse /= total
             out[t] = sparse
         return out
-

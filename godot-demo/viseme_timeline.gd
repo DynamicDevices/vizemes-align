@@ -770,7 +770,7 @@ func _load_and_run() -> int:
 
 func _rebuild_hard_bytes() -> void:
 	var t0 := float(_context_frames - 1) * _hop_s
-	_hard_bytes = VisemeUtils.series_to_hard_bytes(_series, _hop_s, t0, _hard_frame_s)
+	_hard_bytes = VisemeUtils.series_to_preview_bytes(_series, _hop_s, t0, _hard_frame_s)
 
 
 func _predict_series(loader, contexts: Array) -> Array:
@@ -813,7 +813,16 @@ func _predict_series_tcn(loader, mel: Object, pcm: PackedFloat32Array) -> Array:
 		row.resize(n_vis)
 		for c in n_vis:
 			row[c] = flat_logits[t * n_vis + c]
-		out.append(VisemeUtils.softmax(row))
+		out.append(row)
+	var phone_mapper := VisemeUtils.load_phone_mapper_from_onnx(loader)
+	if not phone_mapper.is_empty():
+		out = VisemeUtils.phone_logits_to_viseme_series(out, phone_mapper)
+		if out.is_empty():
+			_status = "phone posterior mapper failed"
+			return []
+	else:
+		for t in out.size():
+			out[t] = VisemeUtils.softmax(out[t])
 	_context_frames = 1
 	_hop_s = 0.01
 	return out
@@ -1178,8 +1187,8 @@ func _draw_hard_ribbon() -> void:
 		if t1 < _view_t0 or t > _view_t1:
 			continue
 		var b: int = _hard_bytes[i]
-		var vid := VisemeUtils.hard_byte_id(b)
-		var blend := VisemeUtils.hard_byte_blend01(b)
+		var vid := VisemeUtils.preview_byte_id(b)
+		var blend := VisemeUtils.preview_byte_confidence01(b)
 		var col := LINE_COLORS[clampi(vid, 0, LINE_COLORS.size() - 1)]
 		draw_rect(
 			Rect2(_t_to_x(t), y, maxf(1.0, _t_to_x(t1) - _t_to_x(t)), h),

@@ -59,6 +59,15 @@ Both ONNX files embed schema-2 model identity, complete vocabularies, input and
 normalisation contracts, architecture, provenance and validation metrics. The
 learned mapper also embeds the SHA-256 identity of its upstream phone ONNX.
 
+The phone ONNX additionally embeds the complete deterministic stage-B contract
+in `phone_to_viseme`: its 15-viseme vocabulary, one viseme ID for every phone
+output column, mapping-file SHA-256/version, hop, causal smoothing constant and
+top-k sparsity. Godot consumes that object from `vizemes_meta_json`; it does not
+load the training mapping JSON at runtime. `phone_mapper_smoke.tscn` gates
+posterior summation, the absence of a false P-to-B visual boundary, causal
+smoothing and top-2 normalisation. The normal TCN timeline detects the contract
+and maps phone logits before the existing face/timeline presentation path.
+
 ## Decision rule
 
 The learned mapper replaces the deterministic table only if held-out evidence

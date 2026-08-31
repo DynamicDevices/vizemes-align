@@ -39,3 +39,8 @@ ignored rather than inventing a transition.
 
 The executable contract and loss-recovery regression are
 `scripts/viseme_sidechannel.py` and `scripts/test_phone_viseme_baseline.py`.
+Godot implements the same byte layout and buffered decoder in
+`godot-demo/viseme_utils.gd`; `phone_mapper_smoke.tscn` repeats the same
+transition and lost-START/resync examples at runtime. The older ID+confidence
+byte used by the timeline plot is explicitly named a **preview byte** and is
+not a wire format.

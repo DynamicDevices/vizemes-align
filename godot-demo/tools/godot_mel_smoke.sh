@@ -66,6 +66,7 @@ run_scene "res://streaming_smoke.tscn" "GODOT_STREAMING_SMOKE_OK"
 # Full TCN inference, not merely CreateSession/load. This gates the two dynamic
 # APIs used by the normal editor timeline before asking Julian for playback.
 run_scene "res://viseme_timeline.tscn" "GODOT_VISEME_TIMELINE_OK"
+run_scene "res://phone_mapper_smoke.tscn" "GODOT_PHONE_MAPPER_OK"
 # Mel L2 gate uses the small ci-fixture probe shipped in the onnxmodels addon.
 export SEEK_PROBE_JSON="res://addons/vizeme-onnxmodels/ci-smoke/seek_probe_ci_fixture.json"
 export SEEK_PROBE_STRICT_MEL=1

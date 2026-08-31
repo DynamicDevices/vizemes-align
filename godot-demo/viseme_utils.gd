@@ -108,9 +108,9 @@ static func argmax(weights: PackedFloat32Array) -> int:
 	return best
 
 
-## Pack soft weights → 1 byte: high nibble = viseme id (0–15), low nibble = blend (0–15).
-## Designed for ~1 byte / 20 ms Opus sideband (MPEG-4-style hard path).
-static func soft_to_hard_byte(weights: PackedFloat32Array) -> int:
+## Local preview only: high nibble = viseme id, low nibble = confidence.
+## This is deliberately not the Opus side-channel boundary-event contract.
+static func soft_to_preview_byte(weights: PackedFloat32Array) -> int:
 	if weights.is_empty():
 		return 0
 	var id := clampi(argmax(weights), 0, 15)
@@ -119,28 +119,28 @@ static func soft_to_hard_byte(weights: PackedFloat32Array) -> int:
 	return (id << 4) | blend
 
 
-static func hard_byte_id(b: int) -> int:
+static func preview_byte_id(b: int) -> int:
 	return (b >> 4) & 0x0F
 
 
-static func hard_byte_blend01(b: int) -> float:
+static func preview_byte_confidence01(b: int) -> float:
 	return float(b & 0x0F) / 15.0
 
 
 ## Expand a hard byte to a sparse weight vector (length n) for VisemeSystem / plots.
-static func hard_byte_to_weights(b: int, n: int) -> PackedFloat32Array:
+static func preview_byte_to_weights(b: int, n: int) -> PackedFloat32Array:
 	var out := PackedFloat32Array()
 	out.resize(maxi(1, n))
 	for i in out.size():
 		out[i] = 0.0
-	var id := hard_byte_id(b)
+	var id := preview_byte_id(b)
 	if id < out.size():
-		out[id] = hard_byte_blend01(b)
+		out[id] = preview_byte_confidence01(b)
 	return out
 
 
 ## Encode a softmax/OVR series (one PackedFloat32Array per hop) to 20 ms hard bytes.
-static func series_to_hard_bytes(
+static func series_to_preview_bytes(
 	series: Array, hop_s: float, t_series0: float, frame_s: float = 0.02
 ) -> PackedByteArray:
 	var out := PackedByteArray()
@@ -152,9 +152,104 @@ static func series_to_hard_bytes(
 		var idx := int(round((t - t_series0) / hop_s))
 		idx = clampi(idx, 0, series.size() - 1)
 		var w: PackedFloat32Array = series[idx]
-		out.append(soft_to_hard_byte(w))
+		out.append(soft_to_preview_byte(w))
 		t += frame_s
 	return out
+
+
+## Sparse one-byte boundary events carried once per 20 ms Opus packet.
+const SIDECHANNEL_FRAME_SECONDS := 0.02
+const SIDECHANNEL_MAX_VISEME_ID := 14
+const SIDECHANNEL_MAX_PACKETS_AGO := 7
+const SIDECHANNEL_NO_EVENT := 0xF0
+const SIDECHANNEL_RESYNC_BASE := 0xF1
+const SIDECHANNEL_START := 0
+const SIDECHANNEL_END := 1
+
+
+static func sidechannel_pack_boundary(target_id: int, kind: int, packets_ago: int) -> int:
+	assert(target_id >= 0 and target_id <= SIDECHANNEL_MAX_VISEME_ID)
+	assert(kind == SIDECHANNEL_START or kind == SIDECHANNEL_END)
+	assert(packets_ago >= 0 and packets_ago <= SIDECHANNEL_MAX_PACKETS_AGO)
+	var low := packets_ago | (0x08 if kind == SIDECHANNEL_END else 0)
+	return (target_id << 4) | low
+
+
+static func sidechannel_unpack_boundary(packet: int) -> Dictionary:
+	assert(packet >= 0 and packet <= 0xFF)
+	assert((packet >> 4) != 0x0F)
+	var low := packet & 0x0F
+	return {
+		"target_id": packet >> 4,
+		"kind": SIDECHANNEL_END if (low & 0x08) else SIDECHANNEL_START,
+		"packets_ago": low & 0x07,
+	}
+
+
+static func sidechannel_pack_resync(current_id: int) -> int:
+	assert(current_id >= 0 and current_id <= SIDECHANNEL_MAX_VISEME_ID)
+	return SIDECHANNEL_RESYNC_BASE + current_id
+
+
+static func sidechannel_unpack_resync(packet: int) -> int:
+	assert(packet >= SIDECHANNEL_RESYNC_BASE and packet <= 0xFF)
+	return packet - SIDECHANNEL_RESYNC_BASE
+
+
+class SidechannelDecoder:
+	var viseme_count: int = 15
+	var base_id: int = 0
+	var transition: Dictionary = {}
+
+	func _init(p_viseme_count: int = 15) -> void:
+		assert(p_viseme_count > 0 and p_viseme_count <= 15)
+		viseme_count = p_viseme_count
+
+	func ingest(packet: int, stream_packet: int) -> void:
+		assert(packet >= 0 and packet <= 0xFF)
+		if packet == 0xF0:
+			return
+		if (packet >> 4) == 0x0F:
+			assert(packet >= 0xF1)
+			base_id = packet - 0xF1
+			assert(base_id < viseme_count)
+			transition = {}
+			return
+		var low := packet & 0x0F
+		var event: Dictionary = {
+			"target_id": packet >> 4,
+			"kind": 1 if (low & 0x08) else 0,
+			"packets_ago": low & 0x07,
+		}
+		assert(int(event["target_id"]) < viseme_count)
+		var boundary_packet := stream_packet - int(event["packets_ago"])
+		if int(event["kind"]) == 0:
+			transition = {
+				"base_id": base_id,
+				"target_id": int(event["target_id"]),
+				"start_packet": boundary_packet,
+			}
+			return
+		if transition.is_empty() or int(transition["target_id"]) != int(event["target_id"]):
+			return # orphan END after packet loss; periodic resync recovers state
+		assert(boundary_packet > int(transition["start_packet"]))
+		transition["end_packet"] = boundary_packet
+
+	func weights_at(audio_packet: float) -> PackedFloat32Array:
+		var weights := PackedFloat32Array()
+		weights.resize(viseme_count)
+		if transition.is_empty() or not transition.has("end_packet"):
+			weights[base_id] = 1.0
+			return weights
+		var start := float(transition["start_packet"])
+		var end := float(transition["end_packet"])
+		var progress := clampf((audio_packet - start) / (end - start), 0.0, 1.0)
+		weights[int(transition["base_id"])] = 1.0 - progress
+		weights[int(transition["target_id"])] += progress
+		if progress >= 1.0:
+			base_id = int(transition["target_id"])
+			transition = {}
+		return weights
 
 
 ## Configure solely from canonical ONNX vizemes_* metadata.
@@ -210,12 +305,80 @@ static func load_id_to_name_from_onnx(loader: Object) -> Array:
 	if typeof(data) != TYPE_DICTIONARY:
 		return []
 	var visemes: Dictionary = data.get("visemes", {})
+	if visemes.is_empty():
+		var mapper: Dictionary = data.get("phone_to_viseme", {})
+		visemes = mapper.get("visemes", {})
 	var n: int = int(data.get("n_visemes", visemes.size()))
 	var names: Array = []
 	names.resize(n)
 	for key in visemes.keys():
 		names[int(visemes[key])] = str(key)
 	return names
+
+
+## Deterministic stage B from a phone ONNX's embedded contract.
+## Input is one phone-logit row per Mel hop; output is sparse viseme weights.
+static func phone_logits_to_viseme_series(logit_series: Array, mapper: Dictionary) -> Array:
+	var out: Array = []
+	var ids: Array = mapper.get("phone_to_viseme_ids", [])
+	var visemes: Dictionary = mapper.get("visemes", {})
+	var n_visemes := visemes.size()
+	var hop_s := float(mapper.get("hop_seconds", 0.0))
+	var smoothing_s := float(mapper.get("smoothing_seconds", -1.0))
+	var top_k := int(mapper.get("top_k", -1))
+	if ids.is_empty() or n_visemes <= 0 or hop_s <= 0.0 or smoothing_s < 0.0 or top_k < 0:
+		push_error("phone mapper contract is incomplete")
+		return out
+	var alpha := 1.0 if smoothing_s == 0.0 else 1.0 - exp(-hop_s / smoothing_s)
+	var state := PackedFloat32Array()
+	state.resize(n_visemes)
+	for logits_variant in logit_series:
+		var logits: PackedFloat32Array = logits_variant
+		if logits.size() != ids.size():
+			push_error("phone mapper logits=%d mapping=%d" % [logits.size(), ids.size()])
+			return []
+		var phones := softmax(logits)
+		var mapped := PackedFloat32Array()
+		mapped.resize(n_visemes)
+		for phone_id in phones.size():
+			var viseme_id := int(ids[phone_id])
+			if viseme_id < 0 or viseme_id >= n_visemes:
+				push_error("phone mapper viseme id out of range: %d" % viseme_id)
+				return []
+			mapped[viseme_id] += phones[phone_id]
+		for viseme_id in n_visemes:
+			state[viseme_id] += alpha * (mapped[viseme_id] - state[viseme_id])
+		var sparse := state.duplicate()
+		if top_k > 0 and top_k < n_visemes:
+			var keep := PackedInt32Array()
+			for _rank in top_k:
+				var best := -1
+				for candidate in n_visemes:
+					if candidate not in keep and (best < 0 or state[candidate] > state[best]):
+						best = candidate
+				keep.append(best)
+			for candidate in n_visemes:
+				if candidate not in keep:
+					sparse[candidate] = 0.0
+		var total := 0.0
+		for value in sparse:
+			total += value
+		if total > 0.0:
+			for viseme_id in n_visemes:
+				sparse[viseme_id] /= total
+		out.append(sparse)
+	return out
+
+
+static func load_phone_mapper_from_onnx(loader: Object) -> Dictionary:
+	if loader == null or not loader.has_method("get_metadata_value"):
+		return {}
+	var blob := str(loader.get_metadata_value("vizemes_meta_json"))
+	var data: Variant = JSON.parse_string(blob)
+	if typeof(data) != TYPE_DICTIONARY:
+		return {}
+	var mapper: Variant = data.get("phone_to_viseme", {})
+	return mapper if typeof(mapper) == TYPE_DICTIONARY else {}
 
 
 static func _configure_mel_from_dict(mel: Object, data: Dictionary) -> bool:

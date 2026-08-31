@@ -130,7 +130,7 @@ func _process(_delta: float) -> void:
 	_frames += produced
 	for _i in produced:
 		if _pipe.last_ovr.size() > 0:
-			_hard_bytes.append(VisemeUtils.soft_to_hard_byte(_pipe.last_ovr))
+			_hard_bytes.append(VisemeUtils.soft_to_preview_byte(_pipe.last_ovr))
 	if _pipe.last_ovr.size() > 0:
 		_last_ovr = _pipe.last_ovr
 	var vad_s: String = "?"
