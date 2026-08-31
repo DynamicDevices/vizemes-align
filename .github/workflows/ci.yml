@@ -58,7 +58,9 @@ jobs:
         run: pip install -r requirements.txt
 
       - name: ONNX model contract is self-contained
-        run: python scripts/test_model_contract.py
+        run: |
+          python scripts/test_model_contract.py
+          python scripts/test_phone_viseme_baseline.py
 
       - name: export_godot_package on fixture
         run: python scripts/ci_test_export_fixture.py
