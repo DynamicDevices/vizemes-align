@@ -133,7 +133,7 @@ def main() -> int:
     parser.add_argument("--output", type=Path, default=ROOT / "export" / "tier-c" / "phone.onnx")
     parser.add_argument("--wall-seconds", type=float, default=600.0)
     parser.add_argument("--limit-utterances", type=int, default=0)
-    parser.add_argument("--channels", type=int, default=96)
+    parser.add_argument("--channels", type=int, default=128)
     parser.add_argument("--layers", type=int, default=5)
     parser.add_argument("--kernel", type=int, default=3)
     parser.add_argument("--lr", type=float, default=3e-4)
