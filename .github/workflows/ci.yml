@@ -135,9 +135,8 @@ jobs:
             --export-onnx export/ci-smoke/model.onnx
           python scripts/build_demo_inputs.py --subset ci-fixture
           test -f export/ci-smoke/model.onnx
-          test -f export/ci-smoke/model.json
           test -f export/ci-smoke/demo_inputs.csv
-          python -c 'import json; print("best_val_acc", json.load(open("export/ci-smoke/model.json"))["best_val_acc"])'
+          python -c 'from pathlib import Path; from scripts.model_contract import load_model_contract; print("best_val_acc", load_model_contract(Path("export/ci-smoke/model.onnx"), require_schema=2)["best_val_acc"])'
 
       - name: sanity check committed smoke ONNX
         run: |

@@ -2,7 +2,7 @@
 """Build demo_inputs.npz + .csv: one causal mel window per viseme (when present).
 
 Picks real windows from data/tensors/<subset> so the sanity table is human-
-readable and non-zero. Prefers coverage of every viseme id in model.json.
+readable and non-zero. Prefers coverage of every viseme id in ONNX metadata.
 """
 from __future__ import annotations
 
@@ -15,6 +15,9 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from model_contract import load_model_contract  # noqa: E402
 
 
 def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndarray]:
@@ -32,7 +35,7 @@ def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndar
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--subset", default="ci-fixture")
-    ap.add_argument("--context", type=int, default=0, help="0 = use model.json")
+    ap.add_argument("--context", type=int, default=0, help="0 = use ONNX metadata")
     ap.add_argument(
         "--out-dir",
         type=Path,
@@ -40,8 +43,7 @@ def main() -> int:
     )
     args = ap.parse_args()
 
-    meta_path = args.out_dir / "model.json"
-    meta = json.loads(meta_path.read_text(encoding="utf-8"))
+    meta = load_model_contract(args.out_dir / "model.onnx", require_schema=2)
     ctx = args.context or int(meta["context_frames"])
     n_feat = int(meta["input_features"])
     n_visemes = int(meta["n_visemes"])

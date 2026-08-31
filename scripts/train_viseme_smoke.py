@@ -13,6 +13,10 @@ from pathlib import Path
 import numpy as np
 
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "scripts"))
+
+from embed_model_metadata import embed_onnx, estimate_latency  # noqa: E402
+from model_contract import load_model_contract  # noqa: E402
 
 
 def windows(X: np.ndarray, y: np.ndarray, ctx: int) -> tuple[np.ndarray, np.ndarray]:
@@ -51,7 +55,7 @@ def main() -> int:
         "--export-onnx",
         type=Path,
         default=None,
-        help="Write ONNX (+ sidecar JSON) after training, e.g. data/export/smoke/model.onnx",
+        help="Write a self-describing ONNX after training, e.g. data/export/smoke/model.onnx",
     )
     args = ap.parse_args()
 
@@ -150,6 +154,7 @@ def main() -> int:
         )
         meta = {
             "model": "viseme_smoke_mlp",
+            "doc": "Smoke MLP over flattened causal log-Mel context.",
             "subset": args.subset,
             "context_frames": args.context,
             "n_mels": int(index["audio"]["n_mels"]),
@@ -162,12 +167,18 @@ def main() -> int:
             "frames_trained": n,
             "utterances": len(utterances),
             "onnx": out.name,
+            "normalization": "per_utterance_per_mel_mean_std",
+            "lookahead_ms": 0.0,
+            "checkpoint": "best-validation-observed/final-weights",
+            "quality": {"best_validation_frame_accuracy": best},
             "note": "Input is flattened causal mel context: (batch, context*n_mels). "
             "Runtime mel SoT: OpenLipSync/audio/mel_spectrogram.c (match torchaudio).",
         }
-        meta_path = out.with_suffix(".json")
-        meta_path.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-        print(f"ONNX_OK {out} meta={meta_path}")
+        meta["latency"] = estimate_latency(index["audio"], args.context, 0.0)
+        embed_onnx(out, meta)
+        contract = load_model_contract(out, require_schema=2)
+        assert contract["input_features"] == in_features
+        print(f"ONNX_OK {out} schema={contract['_schema']} metadata=embedded")
 
     return 0
 

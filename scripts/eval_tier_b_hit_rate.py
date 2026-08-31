@@ -17,6 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "scripts"))
 
 from train_viseme_tier_b import apply_lookahead, soft_boundary_targets  # noqa: E402
+from model_contract import load_model_contract  # noqa: E402
 
 
 def windows_xy(
@@ -63,7 +64,7 @@ def main() -> int:
         "--model-dir",
         type=Path,
         default=ROOT / "export" / "tier-b",
-        help="Directory with model_*.onnx + model_final.json",
+        help="Directory with self-describing model_*.onnx files",
     )
     ap.add_argument(
         "--baseline-onnx",
@@ -78,7 +79,7 @@ def main() -> int:
 
     tdir = ROOT / "data" / "tensors" / args.subset
     index = json.loads((tdir / "index.json").read_text())
-    meta = json.loads((args.model_dir / "model_final.json").read_text())
+    meta = load_model_contract(args.model_dir / "model_final.onnx", require_schema=2)
     n_visemes = int(meta["n_visemes"])
     ctx = int(meta["context_frames"])
     lag = int(meta.get("lookahead_frames", 5))
