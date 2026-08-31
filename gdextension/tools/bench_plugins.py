@@ -85,16 +85,15 @@ def bench_ort(model: Path, feats: int, iters: int = 500) -> float:
 
 
 def main() -> int:
-    import json
+    from model_contract import load_model_contract
 
-    model_json = ROOT / "export/ci-smoke/model.json"
     model_onnx = ROOT / "export/ci-smoke/model.onnx"
     wav_path = ROOT / "export/ci-smoke/ci-fixture.wav"
-    if not model_json.is_file() or not model_onnx.is_file() or not wav_path.is_file():
+    if not model_onnx.is_file() or not wav_path.is_file():
         print("missing ci-smoke fixtures", file=sys.stderr)
         return 1
 
-    meta = json.loads(model_json.read_text())
+    meta = load_model_contract(model_onnx, require_schema=2)
     feats = int(meta.get("input_features", meta.get("context_frames", 20) * 80))
     pcm, _sr = load_wav_mono_f32(wav_path)
 

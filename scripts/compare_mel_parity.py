@@ -14,10 +14,10 @@ sys.path.insert(0, str(ROOT / "scripts"))
 from mel_features_c import ensure_model_meta, mel_features_c  # noqa: E402
 
 
-def run_dump_mel(model_json: Path, wav: Path, dump_bin: Path) -> np.ndarray:
+def run_dump_mel(model_onnx: Path, wav: Path, dump_bin: Path) -> np.ndarray:
     import subprocess
 
-    meta = ensure_model_meta(model_json)
+    meta = ensure_model_meta(model_onnx)
     proc = subprocess.run(
         [str(dump_bin), str(meta), str(wav)],
         check=True,
@@ -39,7 +39,7 @@ def run_dump_mel(model_json: Path, wav: Path, dump_bin: Path) -> np.ndarray:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("wav", nargs="?", type=Path, default=ROOT / "export/ci-smoke/ci-fixture.wav")
-    ap.add_argument("--model-json", type=Path, default=ROOT / "export/ci-smoke/model.json")
+    ap.add_argument("--model-onnx", type=Path, default=ROOT / "export/ci-smoke/model.onnx")
     ap.add_argument("--dump-mel", type=Path, default=ROOT / "gdextension/build/dump_mel")
     ap.add_argument("--tol", type=float, default=1e-4)
     ap.add_argument("--build", action="store_true")
@@ -50,8 +50,8 @@ def main() -> int:
 
         subprocess.run(["make", "-C", str(ROOT / "gdextension"), "dump-mel"], check=True)
 
-    via_api = mel_features_c(args.wav, args.model_json)
-    via_dump = run_dump_mel(args.model_json, args.wav, args.dump_mel)
+    via_api = mel_features_c(args.wav, args.model_onnx)
+    via_dump = run_dump_mel(args.model_onnx, args.wav, args.dump_mel)
 
     if via_api.shape != via_dump.shape:
         print(f"FAIL shape api={via_api.shape} dump={via_dump.shape}", file=sys.stderr)

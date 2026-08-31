@@ -11,14 +11,14 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 DUMP_MEL = ROOT / "gdextension/build/dump_mel"
 EMIT_META = ROOT / "gdextension/tools/emit_model_meta.py"
-DEFAULT_MODEL_JSON = ROOT / "export/ci-smoke/model.json"
+DEFAULT_MODEL_ONNX = ROOT / "export/ci-smoke/model.onnx"
 
 
-def ensure_model_meta(model_json: Path) -> Path:
-    """Emit flat model.meta from model.json (stdlib json; C reads key=value only)."""
-    meta = model_json.with_suffix(".meta")
+def ensure_model_meta(model_onnx: Path) -> Path:
+    """Emit flat model.meta from canonical ONNX metadata; C reads key=value only."""
+    meta = model_onnx.with_suffix(".meta")
     subprocess.run(
-        [sys.executable, str(EMIT_META), str(model_json), str(meta)],
+        [sys.executable, str(EMIT_META), str(model_onnx), str(meta)],
         check=True,
     )
     return meta
@@ -30,10 +30,10 @@ def _ensure_dump_mel() -> Path:
     return DUMP_MEL
 
 
-def mel_features_c(wav_path: Path, model_json: Path | None = None) -> np.ndarray:
+def mel_features_c(wav_path: Path, model_onnx: Path | None = None) -> np.ndarray:
     """Return (T, n_mels) float32 log-mel from host C (torchaudio-compatible batch path)."""
-    model_json = model_json or DEFAULT_MODEL_JSON
-    meta = ensure_model_meta(model_json)
+    model_onnx = model_onnx or DEFAULT_MODEL_ONNX
+    meta = ensure_model_meta(model_onnx)
     dump = _ensure_dump_mel()
     proc = subprocess.run(
         [str(dump), str(meta), str(wav_path)],
