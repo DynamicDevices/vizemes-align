@@ -89,6 +89,7 @@ func _upload_envelope(analysis: Dictionary) -> void:
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://source_filter_envelope.gdshader")
 	material.set_shader_parameter("measurements", texture)
+	envelope_view.texture = texture
 	envelope_view.material = material
 
 
@@ -113,4 +114,5 @@ func _upload_scalars(analysis: Dictionary) -> void:
 	var material := ShaderMaterial.new()
 	material.shader = preload("res://source_filter_lines.gdshader")
 	material.set_shader_parameter("measurements", texture)
+	scalar_view.texture = texture
 	scalar_view.material = material
