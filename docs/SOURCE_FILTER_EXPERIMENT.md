@@ -74,3 +74,6 @@ utterance split would leak each held-out speaker's characteristics into training
 `scripts/prepare_source_filter_pilot.sh` downloads test-clean when necessary,
 selects ten balanced speakers, performs one shared MFA alignment, and emits the
 three matched tensor directories.
+`scripts/train_source_filter_pilot.sh` then gives each frontend the same
+15-minute CPU budget, 19-frame TCN support (`kernel=2`, dilations
+`1,2,2,2,2`), hard targets, 10 ms label lookahead, and two held-out speakers.
