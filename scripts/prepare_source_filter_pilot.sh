@@ -11,7 +11,7 @@ trap finish EXIT
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 FULL_SUBSET="test-clean"
-PILOT_SUBSET="source-filter-pilot"
+PILOT_SUBSET="source-filter-pilot-v2"
 RAW="$ROOT/data/raw/LibriSpeech"
 PREPARED="$ROOT/data/prepared"
 ALIGNED="$ROOT/data/aligned"

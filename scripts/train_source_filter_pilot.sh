@@ -10,7 +10,7 @@ trap finish EXIT
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
-SUBSET="source-filter-pilot"
+SUBSET="source-filter-pilot-v2"
 OUT="$ROOT/export/source-filter-pilot"
 
 cd "$ROOT"

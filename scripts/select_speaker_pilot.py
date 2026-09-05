@@ -60,7 +60,9 @@ def main() -> int:
             raise FileNotFoundError(lab_path)
         seconds = duration(wav_path)
         for source in (wav_path, lab_path):
-            destination = args.out_dir / source.name
+            speaker_dir = args.out_dir / speaker
+            speaker_dir.mkdir(parents=True, exist_ok=True)
+            destination = speaker_dir / source.name
             if not destination.exists():
                 os.link(source, destination)
         utterances.append({"id": wav_path.stem, "speaker": speaker, "seconds": seconds})
