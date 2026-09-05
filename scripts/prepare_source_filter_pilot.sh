@@ -2,6 +2,12 @@
 # Restore a balanced LibriSpeech pilot, align once, then build matched A/B/C tensors.
 set -euo pipefail
 
+finish() {
+	code=$?
+	printf 'EXIT_CODE=%s FINISHED=%s\n' "$code" "$(date -Is)"
+}
+trap finish EXIT
+
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PYTHON="${PYTHON:-python3}"
 FULL_SUBSET="test-clean"
