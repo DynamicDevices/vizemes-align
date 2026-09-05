@@ -30,16 +30,23 @@ from train_viseme_tier_b import (  # noqa: E402
 from embed_model_metadata import embed_onnx, estimate_latency  # noqa: E402
 
 
-def load_split(tdir: Path, val_frac: float, limit: int = 0):
+def load_split(tdir: Path, val_frac: float, limit: int = 0, split_by_speaker: bool = False):
     index = json.loads((tdir / "index.json").read_text())
     utterances = index["utterances"]
     if limit:
         utterances = utterances[:limit]
-    ids = sorted(u["id"] for u in utterances)
-    n_val = max(1, int(len(ids) * val_frac))
-    val_ids = set(ids[-n_val:])
-    train_u = [u for u in utterances if u["id"] not in val_ids]
-    val_u = [u for u in utterances if u["id"] in val_ids]
+    if split_by_speaker:
+        speakers = sorted({u["id"].split("-")[0] for u in utterances})
+        n_val = max(1, int(round(len(speakers) * val_frac)))
+        val_speakers = set(speakers[-n_val:])
+        train_u = [u for u in utterances if u["id"].split("-")[0] not in val_speakers]
+        val_u = [u for u in utterances if u["id"].split("-")[0] in val_speakers]
+    else:
+        ids = sorted(u["id"] for u in utterances)
+        n_val = max(1, int(len(ids) * val_frac))
+        val_ids = set(ids[-n_val:])
+        train_u = [u for u in utterances if u["id"] not in val_ids]
+        val_u = [u for u in utterances if u["id"] in val_ids]
     return index, train_u, val_u
 
 
@@ -48,9 +55,18 @@ def split_digest(utterances: list[dict]) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
-def receptive_history_hops(layers: int, kernel: int) -> int:
-    # Two causal convolutions per block, with dilations 1, 2, 4, ...
-    return 1 + 2 * (kernel - 1) * ((1 << layers) - 1)
+def parse_dilations(value: str, layers: int) -> list[int]:
+    if not value.strip():
+        return [2**index for index in range(layers)]
+    result = [int(part.strip()) for part in value.split(",")]
+    if len(result) != layers or any(dilation < 1 for dilation in result):
+        raise ValueError(f"--dilations must contain {layers} positive integers")
+    return result
+
+
+def receptive_history_hops(dilations: list[int], kernel: int) -> int:
+    # Two causal convolutions per residual block.
+    return 1 + 2 * (kernel - 1) * sum(dilations)
 
 
 def utterance_xy(
@@ -76,7 +92,7 @@ def utterance_xy(
     return X, targets, valid
 
 
-def make_tcn(input_features: int, n_visemes: int, layers: int, channels: int, kernel: int, dropout: float):
+def make_tcn(input_features: int, n_visemes: int, dilations: list[int], channels: int, kernel: int, dropout: float):
     import torch.nn as nn
     from torch.nn.utils import weight_norm
 
@@ -105,7 +121,7 @@ def make_tcn(input_features: int, n_visemes: int, layers: int, channels: int, ke
             super().__init__()
             self.proj = weight_norm(nn.Conv1d(input_features, channels, 1, bias=False))
             self.layers = nn.ModuleList(
-                [CausalBlock(channels, kernel, 2**i, dropout) for i in range(layers)]
+                [CausalBlock(channels, kernel, dilation, dropout) for dilation in dilations]
             )
             self.out = nn.Linear(channels, n_visemes)
             nn.init.normal_(self.out.weight, std=0.01)
@@ -186,6 +202,10 @@ def main() -> int:
         help="Train and score on exactly this utterance; validates model capacity, not generalisation.",
     )
     ap.add_argument("--layers", type=int, default=5)
+    ap.add_argument(
+        "--dilations", default="",
+        help="Comma-separated dilation per layer; default remains exponential.",
+    )
     ap.add_argument("--channels", type=int, default=128)
     ap.add_argument("--kernel", type=int, default=3)
     ap.add_argument("--dropout", type=float, default=0.1)
@@ -204,6 +224,7 @@ def main() -> int:
     ap.add_argument("--blend-ms", type=float, default=60.0)
     ap.add_argument("--hard-boundaries", action="store_true")
     ap.add_argument("--val-frac", type=float, default=0.1)
+    ap.add_argument("--split-by-speaker", action="store_true", help="Hold out complete speakers.")
     ap.add_argument("--limit-utterances", type=int, default=0)
     ap.add_argument("--log-every-s", type=float, default=30.0)
     ap.add_argument("--out-dir", type=Path, default=ROOT / "export" / "tier-b-tcn")
@@ -221,7 +242,9 @@ def main() -> int:
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
 
     tdir = args.tensor_dir or ROOT / "data" / "tensors" / args.subset
-    index, train_u, val_u = load_split(tdir, args.val_frac, args.limit_utterances)
+    index, train_u, val_u = load_split(
+        tdir, args.val_frac, args.limit_utterances, args.split_by_speaker
+    )
     if args.overfit_stem:
         selected = next(
             (utterance for utterance in index["utterances"] if utterance["id"] == args.overfit_stem),
@@ -243,12 +266,13 @@ def main() -> int:
     if selected_device == "auto":
         selected_device = "cpu"
     device = torch.device(selected_device)
-    model = make_tcn(input_features, n_visemes, args.layers, args.channels, args.kernel, args.dropout).to(
+    dilations = parse_dilations(args.dilations, args.layers)
+    model = make_tcn(input_features, n_visemes, dilations, args.channels, args.kernel, args.dropout).to(
         device
     )
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    history_hops = receptive_history_hops(args.layers, args.kernel)
+    history_hops = receptive_history_hops(dilations, args.kernel)
     print(
         f"TCN layers={args.layers} channels={args.channels} params={n_params} device={device} "
         f"history={history_hops}hops/{history_hops * hop_ms:.0f}ms train_u={len(train_u)} "
@@ -271,6 +295,7 @@ def main() -> int:
         "visemes": index["visemes"],
         "audio": index["audio"],
         "layers": args.layers,
+        "dilations": dilations,
         "channels": args.channels,
         "kernel_size": args.kernel,
         "dropout": args.dropout,
@@ -297,6 +322,7 @@ def main() -> int:
         "receptive_history_ms": history_hops * hop_ms,
         "train_split_sha256": split_digest(train_u),
         "val_split_sha256": split_digest(val_u),
+        "split_unit": "speaker" if args.split_by_speaker else "utterance",
     }
     if args.overfit_stem:
         meta_base["training_mode"] = "single_utterance_overfit"

@@ -67,3 +67,10 @@ on each target rather than treating this number as portable.
 Selected-stem fits remain capacity tests, never held-out accuracy. Remote runs
 must record the exact split, frontend contract, model metadata, convergence, and
 whether they used CPU or an accelerator.
+
+`scripts/select_speaker_pilot.py` makes the pilot deterministic and records its
+chosen speakers, utterances, and duration. Train with `--split-by-speaker`; an
+utterance split would leak each held-out speaker's characteristics into training.
+`scripts/prepare_source_filter_pilot.sh` downloads test-clean when necessary,
+selects ten balanced speakers, performs one shared MFA alignment, and emits the
+three matched tensor directories.
