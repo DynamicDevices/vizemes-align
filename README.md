@@ -11,6 +11,7 @@ Derived from the Dynamic Devices / OpenLipSync training data pipeline.
 | Doc | Contents |
 |-----|----------|
 | [docs/MODELS.md](docs/MODELS.md) | Download / use self-describing ONNX, latency, Godot timeline |
+| [docs/SOURCE_FILTER_EXPERIMENT.md](docs/SOURCE_FILTER_EXPERIMENT.md) | LPC/source frontend contract, preview, and matched Mel comparison |
 | [docs/TRAINING.md](docs/TRAINING.md) | MFA, tensors, smoke + tier-B train, scoring, embedding metadata |
 
 ## Quick start (alignment package)

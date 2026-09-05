@@ -62,7 +62,7 @@ def utterance_xy(
     soft: bool,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     z = np.load(tdir / u["path"])
-    X = z["X"].astype(np.float32)  # (T, n_mels)
+    X = z["X"].astype(np.float32)  # (T, input_features)
     y = apply_lookahead(z["y"].astype(np.int64), lag)
     valid = z["valid"].astype(bool) if "valid" in z else np.ones(y.shape, dtype=bool)
     valid = apply_lookahead(valid, lag).astype(bool)
@@ -76,7 +76,7 @@ def utterance_xy(
     return X, targets, valid
 
 
-def make_tcn(n_mels: int, n_visemes: int, layers: int, channels: int, kernel: int, dropout: float):
+def make_tcn(input_features: int, n_visemes: int, layers: int, channels: int, kernel: int, dropout: float):
     import torch.nn as nn
     from torch.nn.utils import weight_norm
 
@@ -103,7 +103,7 @@ def make_tcn(n_mels: int, n_visemes: int, layers: int, channels: int, kernel: in
     class TCN(nn.Module):
         def __init__(self):
             super().__init__()
-            self.proj = weight_norm(nn.Conv1d(n_mels, channels, 1, bias=False))
+            self.proj = weight_norm(nn.Conv1d(input_features, channels, 1, bias=False))
             self.layers = nn.ModuleList(
                 [CausalBlock(channels, kernel, 2**i, dropout) for i in range(layers)]
             )
@@ -111,9 +111,9 @@ def make_tcn(n_mels: int, n_visemes: int, layers: int, channels: int, kernel: in
             nn.init.normal_(self.out.weight, std=0.01)
             nn.init.zeros_(self.out.bias)
 
-        def forward(self, mel_btf):
+        def forward(self, features_btf):
             # (B, T, F) → (B, T, C)
-            x = mel_btf.transpose(1, 2)
+            x = features_btf.transpose(1, 2)
             h = self.proj(x)
             for layer in self.layers:
                 h = layer(h)
@@ -123,19 +123,20 @@ def make_tcn(n_mels: int, n_visemes: int, layers: int, channels: int, kernel: in
     return TCN()
 
 
-def export_onnx(model, path: Path, meta: dict, n_mels: int) -> None:
+def export_onnx(model, path: Path, meta: dict, input_features: int) -> None:
     import torch
 
     path.parent.mkdir(parents=True, exist_ok=True)
     model_cpu = model.to("cpu").eval()
-    dummy = torch.zeros(1, 32, n_mels, dtype=torch.float32)
+    dummy = torch.zeros(1, 32, input_features, dtype=torch.float32)
+    input_name = "mel_btf" if meta["audio"].get("frontend", "mel") == "mel" else "features_btf"
     torch.onnx.export(
         model_cpu,
         dummy,
         str(path),
-        input_names=["mel_btf"],
+        input_names=[input_name],
         output_names=["viseme_logits"],
-        dynamic_axes={"mel_btf": {0: "batch", 1: "time"}, "viseme_logits": {0: "batch", 1: "time"}},
+        dynamic_axes={input_name: {0: "batch", 1: "time"}, "viseme_logits": {0: "batch", 1: "time"}},
         opset_version=17,
         # Keep the pinned Nix training shell self-contained. PyTorch 2.9's
         # default dynamo exporter adds an onnxscript dependency unavailable in
@@ -178,6 +179,7 @@ def plot_convergence(csv_path: Path, out_png: Path, title: str) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--subset", default="test-clean")
+    ap.add_argument("--tensor-dir", type=Path, help="Override data/tensors/<subset> for an isolated run.")
     ap.add_argument(
         "--overfit-stem",
         default="",
@@ -218,7 +220,7 @@ def main() -> int:
         torch.cuda.manual_seed_all(args.seed)
     torch.set_num_threads(max(1, min(8, torch.get_num_threads())))
 
-    tdir = ROOT / "data" / "tensors" / args.subset
+    tdir = args.tensor_dir or ROOT / "data" / "tensors" / args.subset
     index, train_u, val_u = load_split(tdir, args.val_frac, args.limit_utterances)
     if args.overfit_stem:
         selected = next(
@@ -230,7 +232,7 @@ def main() -> int:
         train_u = [selected]
         val_u = [selected]
     n_visemes = len(index["visemes"])
-    n_mels = int(index["audio"]["n_mels"])
+    input_features = int(index["audio"].get("input_features") or index["audio"]["n_mels"])
     hop_ms = 1000.0 * index["audio"]["hop_length_samples"] / index["audio"]["sample_rate"]
     lag = max(0, int(round(args.lookahead_ms / hop_ms)))
     blend = max(0, int(round(args.blend_ms / hop_ms)))
@@ -241,7 +243,7 @@ def main() -> int:
     if selected_device == "auto":
         selected_device = "cpu"
     device = torch.device(selected_device)
-    model = make_tcn(n_mels, n_visemes, args.layers, args.channels, args.kernel, args.dropout).to(
+    model = make_tcn(input_features, n_visemes, args.layers, args.channels, args.kernel, args.dropout).to(
         device
     )
     opt = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=1e-2)
@@ -264,7 +266,7 @@ def main() -> int:
     meta_base = {
         "model": "viseme_tcn",
         "subset": args.subset,
-        "n_mels": n_mels,
+        "n_mels": index["audio"].get("n_mels"),
         "n_visemes": n_visemes,
         "visemes": index["visemes"],
         "audio": index["audio"],
@@ -282,9 +284,9 @@ def main() -> int:
             "Causal direct-viseme TCN. When overfit_stem is set, this is a one-clip "
             "capacity check and its fit score must not be interpreted as generalisation."
         ),
-        "normalization": "per_utterance_per_mel_mean_std",
+        "normalization": "per_utterance_per_feature_mean_std",
         "context_frames": 1,
-        "input_features": n_mels,
+        "input_features": input_features,
         "train_utterances": len(train_u),
         "val_utterances": len(val_u),
         "params": n_params,
@@ -384,7 +386,7 @@ def main() -> int:
         }
     )
     model_path = out_dir / "model_final.onnx"
-    export_onnx(model, model_path, meta, n_mels)
+    export_onnx(model, model_path, meta, input_features)
     embed_onnx(model_path, meta)
     (out_dir / "model.json").write_text(json.dumps(meta, indent=2) + "\n")
     plot_convergence(

@@ -1,0 +1,103 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://source_filter_preview.gd" id="1"]
+
+[node name="SourceFilterPreview" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Margin" type="MarginContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Layout" type="VBoxContainer" parent="Margin"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="Margin/Layout"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Speech source / filter preview"
+
+[node name="Description" type="Label" parent="Margin/Layout"]
+layout_mode = 2
+text = "Production C features used for experiments; the 80-bin envelope is a dense visual view of the LPC filter."
+autowrap_mode = 2
+
+[node name="FileRow" type="HBoxContainer" parent="Margin/Layout"]
+layout_mode = 2
+
+[node name="PathEdit" type="LineEdit" parent="Margin/Layout/FileRow"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "16 kHz mono PCM WAV"
+
+[node name="Load" type="Button" parent="Margin/Layout/FileRow"]
+layout_mode = 2
+text = "Load"
+
+[node name="Browse" type="Button" parent="Margin/Layout/FileRow"]
+layout_mode = 2
+text = "Browse…"
+
+[node name="StatusLabel" type="Label" parent="Margin/Layout"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Loading…"
+
+[node name="EnvelopeLabel" type="Label" parent="Margin/Layout"]
+layout_mode = 2
+text = "LPC vocal-tract envelope — 0–4 kHz (low at bottom)"
+
+[node name="EnvelopeView" type="TextureRect" parent="Margin/Layout"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 300)
+layout_mode = 2
+size_flags_vertical = 3
+texture_filter = 1
+expand_mode = 1
+stretch_mode = 6
+
+[node name="ScalarRow" type="HBoxContainer" parent="Margin/Layout"]
+layout_mode = 2
+
+[node name="ScalarLabels" type="Label" parent="Margin/Layout/ScalarRow"]
+custom_minimum_size = Vector2(150, 192)
+layout_mode = 2
+text = "energy\nLPC gain\nperiodicity\npitch (log)\npitch confidence\npitch valid\nHNR\nresidual tilt"
+vertical_alignment = 1
+
+[node name="ScalarView" type="TextureRect" parent="Margin/Layout/ScalarRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 192)
+layout_mode = 2
+size_flags_horizontal = 3
+texture_filter = 1
+expand_mode = 1
+stretch_mode = 6
+
+[node name="FileDialog" type="FileDialog" parent="."]
+unique_name_in_owner = true
+title = "Choose a 16 kHz mono PCM WAV"
+size = Vector2i(900, 600)
+file_mode = 0
+access = 2
+filters = PackedStringArray("*.wav ; WAV audio")
+
+[connection signal="pressed" from="Margin/Layout/FileRow/Load" to="." method="_on_load_pressed"]
+[connection signal="pressed" from="Margin/Layout/FileRow/Browse" to="." method="_on_browse_pressed"]
+[connection signal="file_selected" from="FileDialog" to="." method="_on_file_selected"]

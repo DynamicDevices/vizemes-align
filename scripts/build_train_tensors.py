@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build mel feature tensors + viseme frame labels (OpenLipSync audio recipe).
+"""Build acoustic feature tensors + viseme frame labels.
 
 Stage: feature extraction / dataset build for classifier training.
 Reads data/{prepared,aligned}/<subset>, writes data/tensors/<subset>/…
@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 from export_godot_package import load_viseme_map, phones_from_textgrid  # noqa: E402
 from mel_features_c import mel_features_c  # noqa: E402
+from source_filter_features_c import source_filter_features_c  # noqa: E402
 
 # Match OpenLipSync training/recipes/tcn_config.toml defaults (embedded in ONNX metadata).
 AUDIO = {
@@ -83,6 +84,10 @@ def main() -> int:
     ap.add_argument("--aligned-dir", type=Path)
     ap.add_argument("--out-dir", type=Path)
     ap.add_argument("--require-quality", action="store_true")
+    ap.add_argument(
+        "--frontend", choices=("mel", "lpc-filter", "lpc-source-filter"), default="mel",
+        help="Feature contract; both LPC modes call the production C extractor.",
+    )
     args = ap.parse_args()
 
     prepared = ROOT / "data" / "prepared" / args.subset
@@ -100,9 +105,25 @@ def main() -> int:
     if args.limit:
         grids = grids[: args.limit]
 
+    feature_names = (
+        [f"reflection_{i + 1}" for i in range(16)]
+        + (["rms", "prediction_gain", "periodicity", "pitch_log", "pitch_confidence",
+            "pitch_valid", "hnr", "residual_tilt"] if args.frontend == "lpc-source-filter" else [])
+    ) if args.frontend != "mel" else [f"mel_{i}" for i in range(AUDIO["n_mels"])]
+    audio_contract = dict(AUDIO) if args.frontend == "mel" else {
+        "sample_rate": AUDIO["sample_rate"],
+        "window_length_samples": AUDIO["window_length_samples"],
+        "hop_length_samples": AUDIO["hop_length_samples"],
+        "lpc_order": 16,
+    }
+    audio_contract.update({
+        "frontend": args.frontend,
+        "input_features": len(feature_names),
+        "feature_names": feature_names,
+    })
     index = {
         "subset": args.subset,
-        "audio": AUDIO,
+        "audio": audio_contract,
         "viseme_map": args.viseme_map.name,
         "visemes": name_to_idx,
         "fps": 1.0 / hop_s,
@@ -121,7 +142,10 @@ def main() -> int:
             continue
 
         phones = phones_from_textgrid(tg_path)
-        X = mel_features(wav)
+        if args.frontend == "mel":
+            X = mel_features(wav)
+        else:
+            X = source_filter_features_c(wav, include_source=args.frontend == "lpc-source-filter")
         # per-utterance normalize (OpenLipSync default)
         mu = X.mean(axis=0, keepdims=True)
         sd = X.std(axis=0, keepdims=True) + 1e-5
@@ -140,7 +164,7 @@ def main() -> int:
                 "id": stem,
                 "path": npz.name,
                 "frames": int(Xn.shape[0]),
-                "n_mels": int(Xn.shape[1]),
+                "input_features": int(Xn.shape[1]),
                 "valid_frames": int(valid.sum()),
                 "excluded_frames": int(valid.size - valid.sum()),
                 "alignment_quality": str(quality_path.relative_to(aligned)) if quality_path.exists() else None,

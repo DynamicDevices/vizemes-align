@@ -26,7 +26,8 @@ mel_c = [
     "frontends/mel/mel_spectrogram.c",
     "src/mel_frontend.c",
 ]
-inc = ["include", "frontends/mel", "src"]
+source_filter_c = ["frontends/source_filter/source_filter.c"]
+inc = ["include", "frontends/mel", "frontends/source_filter", "src"]
 
 env_c = env.Clone()
 env_c.Append(
@@ -34,6 +35,7 @@ env_c.Append(
     CPPPATH=inc,
 )
 mel_lib = env_c.StaticLibrary("build/libvizemes_mel_c", mel_c)
+source_filter_lib = env_c.StaticLibrary("build/libvizemes_source_filter_c", source_filter_c)
 
 _config_types_dst = "thirdparty/speexdsp/include/speex/speexdsp_config_types.h"
 if not os.path.isfile(_config_types_dst):
@@ -116,11 +118,12 @@ obj_fx = env_mel_cpp.SharedObject("build/MelAudioEffect", "src/MelAudioEffect.cp
 obj_reg = env_mel_cpp.SharedObject("build/register_types", "src/register_types.cpp")
 obj_pp = env_pp_cpp.SharedObject("build/MelSpeexPreprocess", "src/MelSpeexPreprocess.cpp")
 obj_aec = env_pp_cpp.SharedObject("build/MelSpeexEcho", "src/MelSpeexEcho.cpp")
+obj_source_filter = env_mel_cpp.SharedObject("build/SourceFilterFrontend", "src/SourceFilterFrontend.cpp")
 
 env_link = env.Clone()
 if env_link["platform"] == "linux":
     env_link.Append(LINKFLAGS=["-static-libgcc", "-static-libstdc++", "-Wl,-z,noexecstack"])
-env_link.Append(LIBS=[mel_lib, speex_rs, speex_pp, "m"])
+env_link.Append(LIBS=[mel_lib, source_filter_lib, speex_rs, speex_pp, "m"])
 
 libname = "vizemes_mel"
 if env_link["platform"] == "macos":
@@ -133,12 +136,12 @@ if env_link["platform"] == "macos":
             env_link["platform"],
             env_link["target"],
         ),
-        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec],
+        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec, obj_source_filter],
     )
 else:
     library = env_link.SharedLibrary(
         "../addons/vizemes_mel/bin/lib{}{}{}".format(libname, env_link["suffix"], env_link["SHLIBSUFFIX"]),
-        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec],
+        source=[obj_mel, obj_fx, obj_reg, obj_pp, obj_aec, obj_source_filter],
     )
 
 Default(library)

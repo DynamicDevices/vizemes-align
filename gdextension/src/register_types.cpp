@@ -1,5 +1,6 @@
 #include "MelAudioEffect.hpp"
 #include "MelFrontend.hpp"
+#include "SourceFilterFrontend.hpp"
 
 #include <gdextension_interface.h>
 #include <godot_cpp/core/class_db.hpp>
@@ -14,6 +15,7 @@ void initialize_vizemes_mel_module(ModuleInitializationLevel p_level)
 		return;
 	}
 	ClassDB::register_class<MelFrontend>();
+	ClassDB::register_class<SourceFilterFrontend>();
 	ClassDB::register_class<MelAudioEffectInstance>();
 	ClassDB::register_class<MelAudioEffect>();
 }
